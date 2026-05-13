@@ -15,6 +15,7 @@ import {
   getProfilesStorageSnapshot,
   parseProfilesSnapshot,
   setActiveProfileId,
+  unlockProfileLoginWithRecoveryCode,
 } from "@/lib/profile";
 import { verifyProfilePassword } from "@/lib/profilePwdCrypto";
 import { addUnlockedProfile, getUnlockedProfileIds } from "@/lib/sessionUnlock";
@@ -39,6 +40,8 @@ type Ctx = {
   /** Aktives Profil hat Passwort und ist in dieser Sitzung noch nicht entsperrt */
   activeProfileLockedOut: boolean;
   unlockActiveWithPassword: (password: string) => Promise<boolean>;
+  /** Backup-Code (beim Aktivieren notiert): Schutz entfernen ohne Login-Passwort. */
+  recoverActiveWithRecoveryCode: (recoveryPlain: string) => Promise<boolean>;
   /** Nach erfolgreicher Passwort-Änderung die Sitzung als entsperrt markieren */
   registerSessionUnlock: (profileId: string) => void;
   switchProfile: (id: string) => void;
@@ -75,6 +78,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     activeProfile &&
     profileIsLocked(activeProfile) &&
     !sessionUnlockedIds.has(activeProfile.id)
+  );
+
+  const recoverActiveWithRecoveryCodeCb = useCallback(
+    async (recoveryPlain: string) => {
+      if (!activeProfile) return false;
+      const ok = await unlockProfileLoginWithRecoveryCode(activeProfile.id, recoveryPlain);
+      if (ok) registerSessionUnlock(activeProfile.id);
+      return ok;
+    },
+    [activeProfile, registerSessionUnlock]
   );
 
   const unlockActiveWithPassword = useCallback(
@@ -118,6 +131,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       activeProfile,
       activeProfileLockedOut,
       unlockActiveWithPassword,
+      recoverActiveWithRecoveryCode: recoverActiveWithRecoveryCodeCb,
       registerSessionUnlock,
       switchProfile,
       createProfile,
@@ -129,6 +143,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       activeProfile,
       activeProfileLockedOut,
       unlockActiveWithPassword,
+      recoverActiveWithRecoveryCodeCb,
       registerSessionUnlock,
       switchProfile,
       createProfile,

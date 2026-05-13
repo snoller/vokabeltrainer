@@ -1,4 +1,4 @@
-import { hashProfilePassword } from "@/lib/profilePwdCrypto";
+import { hashProfilePassword, verifyProfilePassword } from "@/lib/profilePwdCrypto";
 
 const ACTIVE_KEY = "vokabeltrainer:v1:activeProfileId";
 const PROFILES_KEY = "vokabeltrainer:v1:profiles";
@@ -13,6 +13,9 @@ export type Profile = {
   pwdHashHex?: string;
   /** Zufallssalz (Hex), optional */
   pwdSaltHex?: string;
+  /** Separater Backup-Code PBKDF2 (Hex), nur wenn beim Setzen angelegt */
+  recoveryHashHex?: string;
+  recoverySaltHex?: string;
 };
 
 export function cardsStorageKey(profileId: string): string {
@@ -24,6 +27,30 @@ export function profileIsLocked(p: Profile): boolean {
   const h = p.pwdHashHex;
   const s = p.pwdSaltHex;
   return typeof h === "string" && h.length >= 64 && typeof s === "string" && s.length >= 32;
+}
+
+/** Einrichtung „Passwort vergessen“ ohne Passwort möglich, wenn beim Aktivieren des Schutzes angelegt. */
+export function profileHasRecoveryBackup(p: Profile): boolean {
+  const h = p.recoveryHashHex;
+  const s = p.recoverySaltHex;
+  return typeof h === "string" && h.length >= 64 && typeof s === "string" && s.length >= 32;
+}
+
+/** Zufälliger Backup-Code (nur ASCII, später mit/ohne Bindestriche eingebbar). */
+export function generateReadableRecoveryCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(10));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Anzeige z. B. a1b2-c3d4-e5f6-… für leichtere Abschrift. */
+export function formatRecoveryCodeForDisplay(hex: string): string {
+  const clean = hex.replace(/[^a-fA-F0-9]/g, "").toLowerCase();
+  const parts = clean.match(/.{1,4}/g);
+  return parts ? parts.join("-") : hex;
+}
+
+function normalizeRecoveryCodeInput(raw: string): string {
+  return raw.replace(/[^a-fA-F0-9]/g, "").toLowerCase();
 }
 
 function safeParseProfiles(raw: string | null): Profile[] {
@@ -160,21 +187,76 @@ export function renameProfile(id: string, label: string): void {
   window.dispatchEvent(new Event("vokabeltrainer:profile"));
 }
 
-/** Leeres `plainPassword` entfernt den Schutz. */
-export async function setProfilePassword(id: string, plainPassword: string): Promise<void> {
+/** Leeres `plainPassword` entfernt den Schutz inklusive Backup-Codes. */
+export async function setProfilePassword(
+  id: string,
+  plainPassword: string,
+  options?: {
+    /** Beim ersten Setzen: einmal angezeigter Code (Klartext) wird nur gehasht gespeichert. */
+    recoveryPlainShownOnce?: string | null;
+  }
+): Promise<void> {
   const profiles = loadProfiles();
   const i = profiles.findIndex((p) => p.id === id);
   if (i === -1) return;
   const cur = profiles[i]!;
   const raw = plainPassword.trim();
+  const base = (): Pick<Profile, "id" | "label" | "createdAt"> => ({
+    id: cur.id,
+    label: cur.label,
+    createdAt: cur.createdAt,
+  });
+
   if (!raw) {
-    profiles[i] = { id: cur.id, label: cur.label, createdAt: cur.createdAt };
+    profiles[i] = { ...base() };
   } else {
     const { hashHex, saltHex } = await hashProfilePassword(raw);
-    profiles[i] = { ...cur, pwdHashHex: hashHex, pwdSaltHex: saltHex };
+    let recoveryHashHex = cur.recoveryHashHex;
+    let recoverySaltHex = cur.recoverySaltHex;
+
+    const newRecPlain = options?.recoveryPlainShownOnce?.trim();
+    if (newRecPlain) {
+      const hr = await hashProfilePassword(normalizeRecoveryCodeInput(newRecPlain));
+      recoveryHashHex = hr.hashHex;
+      recoverySaltHex = hr.saltHex;
+    } else if (!(recoveryHashHex && recoverySaltHex)) {
+      recoveryHashHex = undefined;
+      recoverySaltHex = undefined;
+    }
+
+    profiles[i] = {
+      ...base(),
+      pwdHashHex: hashHex,
+      pwdSaltHex: saltHex,
+      ...(recoveryHashHex && recoverySaltHex ? { recoveryHashHex, recoverySaltHex } : {}),
+    };
   }
   saveProfilesList(profiles);
   window.dispatchEvent(new Event("vokabeltrainer:profile"));
+}
+
+/**
+ * Vergisst sich Passwort aber hat beim Einrichten den Backup-Code notiert → Schutz wird entfernt (Karten bleiben erhalten).
+ * Danach sollte wieder ein Passwort gesetzt werden.
+ */
+export async function unlockProfileLoginWithRecoveryCode(id: string, recoveryPlain: string): Promise<boolean> {
+  const profiles = loadProfiles();
+  const i = profiles.findIndex((p) => p.id === id);
+  if (i === -1) return false;
+  const cur = profiles[i]!;
+  if (!profileIsLocked(cur)) return false;
+  if (!profileHasRecoveryBackup(cur)) return false;
+
+  const normalized = normalizeRecoveryCodeInput(recoveryPlain.trim());
+  if (normalized.length < 8) return false;
+
+  const ok = await verifyProfilePassword(normalized, cur.recoveryHashHex!, cur.recoverySaltHex!);
+  if (!ok) return false;
+
+  profiles[i] = { id: cur.id, label: cur.label, createdAt: cur.createdAt };
+  saveProfilesList(profiles);
+  window.dispatchEvent(new Event("vokabeltrainer:profile"));
+  return true;
 }
 
 export function getProfileLabel(id: string): string | null {
