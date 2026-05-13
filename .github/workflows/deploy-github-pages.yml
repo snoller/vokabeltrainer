@@ -1,0 +1,54 @@
+# Build & Deploy der statischen Vite-App auf GitHub Pages.
+#
+# Einrichtung: Repository → Settings → Pages → Source: „GitHub Actions“.
+#
+# URL bei normalem Repo: https://<user>.github.io/<repo-name>/
+# Root-Seite (Repository heißt <user>.github.io): Repositoryvariable PAGES_BASE_PATH auf / setzen
+# (Settings → Secrets and variables → Actions → Variables: PAGES_BASE_PATH = /)
+#
+# Foto-Scan: GitHub Pages liefert nur statische Dateien. Optional Variables: VITE_API_ORIGIN=https://deine-api.example.com
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Build site
+        env:
+          # Ohne Repo-Variable: Unterpfad /<repository.name>/
+          VITE_BASE_PATH: ${{ vars.PAGES_BASE_PATH != '' && vars.PAGES_BASE_PATH || format('/{0}/', github.event.repository.name) }}
+          VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN }}
+        run: npm run build:pages
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

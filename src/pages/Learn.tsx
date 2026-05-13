@@ -1,0 +1,467 @@
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import type { VocabularyCard } from "@/types";
+import { formatCardMetaLine } from "@/lib/cardMeta";
+import {
+  LEARN_FLASHCARD_STORAGE_KEY,
+  getLearnFlashcardAppearance,
+  setLearnFlashcardAppearance,
+  type LearnFlashcardAppearance,
+} from "@/lib/learnFlashcardAppearance";
+import { getCardsStorageSnapshot, parseCardsSnapshot, saveCards } from "@/lib/storage";
+import { normalizeAnswerForCompare } from "@/lib/textNorm";
+import { isDue, scheduleNext, type ReviewQuality } from "@/lib/srs";
+
+function subscribe(cb: () => void) {
+  window.addEventListener("storage", cb);
+  window.addEventListener("vokabeltrainer:update", cb);
+  window.addEventListener("vokabeltrainer:profile", cb);
+  return () => {
+    window.removeEventListener("storage", cb);
+    window.removeEventListener("vokabeltrainer:update", cb);
+    window.removeEventListener("vokabeltrainer:profile", cb);
+  };
+}
+
+function notify() {
+  window.dispatchEvent(new Event("vokabeltrainer:update"));
+}
+
+function pickDueQueue(cards: VocabularyCard[], now: number): VocabularyCard[] {
+  const due = cards.filter((c) => isDue(c, now));
+  due.sort((a, b) => a.srs.dueAt - b.srs.dueAt);
+  return due;
+}
+
+export default function Learn() {
+  const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
+  const cards = useMemo(() => parseCardsSnapshot(raw), [raw]);
+  const [now, setNow] = useState(() => Date.now());
+  const [mode, setMode] = useState<"reveal" | "front">("front");
+  const [method, setMethod] = useState<"flash" | "type">("flash");
+  const [typed, setTyped] = useState("");
+  /** Nach Eintippen: erst Feedback, dann Weiter-Klick für SRS */
+  const [typeFeedback, setTypeFeedback] = useState<null | "correct" | "incorrect">(null);
+  const [cardLook, setCardLook] = useState<LearnFlashcardAppearance>(() => getLearnFlashcardAppearance());
+
+  useEffect(() => {
+    const onCustomLook = () => setCardLook(getLearnFlashcardAppearance());
+    const onStorage = (e: StorageEvent) => {
+      if (e.key != null && e.key !== LEARN_FLASHCARD_STORAGE_KEY) return;
+      setCardLook(getLearnFlashcardAppearance());
+    };
+    window.addEventListener("vokabeltrainer:learnCardLook", onCustomLook);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("vokabeltrainer:learnCardLook", onCustomLook);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  const queue = useMemo(() => pickDueQueue(cards, now), [cards, now]);
+  const current = queue[0];
+
+  useEffect(() => {
+    setTypeFeedback(null);
+    setTyped("");
+  }, [current?.id, method]);
+
+  const updateCurrent = useCallback(
+    (quality: ReviewQuality) => {
+      if (!current) return;
+      const nextSrs = scheduleNext(current.srs, quality, Date.now());
+      const updated = cards.map((c) => (c.id === current.id ? { ...c, srs: nextSrs } : c));
+      saveCards(updated);
+      notify();
+      setMode("front");
+      setTyped("");
+      setNow(Date.now());
+    },
+    [cards, current]
+  );
+
+  const checkTyped = useCallback(() => {
+    if (!current || typeFeedback !== null) return;
+    if (!typed.trim()) return;
+    const ok =
+      normalizeAnswerForCompare(typed) === normalizeAnswerForCompare(current.back);
+    setTypeFeedback(ok ? "correct" : "incorrect");
+  }, [current, typed, typeFeedback]);
+
+  const proceedAfterTypeFeedback = useCallback(() => {
+    if (!current || typeFeedback === null) return;
+    setTypeFeedback(null);
+    updateCurrent(typeFeedback === "correct" ? "good" : "again");
+  }, [current, typeFeedback, updateCurrent]);
+
+  if (cards.length === 0) {
+    return (
+      <div>
+        <h1 style={{ marginTop: 0 }}>Lernen</h1>
+        <p style={{ color: "var(--ink-muted)" }}>Noch keine Karten. Lege welche in der Bibliothek an oder nutze den Foto-Scan.</p>
+      </div>
+    );
+  }
+
+  if (!current) {
+    return (
+      <div>
+        <h1 style={{ marginTop: 0 }}>Lernen</h1>
+        <p style={{ color: "var(--ink-muted)", maxWidth: "48ch" }}>
+          Alles erledigt für den Moment. Komm später wieder – die nächsten Wiederholungen sind zeitgestaffelt.
+        </p>
+        <button
+          type="button"
+          onClick={() => setNow(Date.now())}
+          style={{
+            marginTop: "1rem",
+            padding: "0.65rem 1.2rem",
+            borderRadius: 999,
+            border: "1px solid rgba(232, 234, 239, 0.2)",
+            background: "var(--bg-raised)",
+            color: "var(--ink)",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Erneut prüfen
+        </button>
+      </div>
+    );
+  }
+
+  const currentMeta = formatCardMetaLine(current);
+
+  return (
+    <div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "1rem" }}>
+        <h1 style={{ margin: 0 }}>Lernen</h1>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.85rem", alignItems: "center", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+            <span style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }} id="learn-cardlook-label">
+              Karteikarte
+            </span>
+            <select
+              value={cardLook}
+              aria-labelledby="learn-cardlook-label"
+              onChange={(e) => {
+                const next = e.target.value as LearnFlashcardAppearance;
+                setCardLook(next);
+                setLearnFlashcardAppearance(next);
+              }}
+              style={{
+                padding: "0.4rem 0.75rem",
+                borderRadius: 8,
+                border: "1px solid rgba(232, 234, 239, 0.15)",
+                background: "var(--bg-raised)",
+                color: "var(--ink)",
+                fontFamily: "var(--font-ui)",
+              }}
+            >
+              <option value="paper">Weiß liniiert</option>
+              <option value="dark">Dunkel</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+            <span style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }} id="learn-method-label">
+              Methode
+            </span>
+          <select
+            aria-labelledby="learn-method-label"
+            value={method}
+            onChange={(e) => {
+              setMethod(e.target.value as "flash" | "type");
+              setMode("front");
+              setTyped("");
+            }}
+            style={{
+              padding: "0.4rem 0.75rem",
+              borderRadius: 8,
+              border: "1px solid rgba(232, 234, 239, 0.15)",
+              background: "var(--bg-raised)",
+              color: "var(--ink)",
+              fontFamily: "var(--font-ui)",
+            }}
+          >
+            <option value="flash">Karteikarten</option>
+            <option value="type">Eintippen</option>
+          </select>
+          </div>
+        </div>
+      </div>
+
+      <p style={{ color: "var(--ink-muted)", marginTop: 0, fontSize: "0.95rem" }}>
+        Noch {queue.length} fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
+      </p>
+
+      <div
+        className={`learn-flashcard learn-flashcard--${cardLook}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => method === "flash" && setMode((m) => (m === "front" ? "reveal" : m))}
+        onKeyDown={(e) => {
+          if (method === "flash" && (e.key === "Enter" || e.key === " ")) {
+            e.preventDefault();
+            setMode((m) => (m === "front" ? "reveal" : m));
+          }
+        }}
+        style={{
+          minHeight: 220,
+          cursor: method === "flash" && mode === "front" ? "pointer" : "default",
+          marginBottom: "1.25rem",
+        }}
+      >
+        {currentMeta && (
+          <div className="learn-fc-meta" style={{ fontSize: "0.85rem", marginBottom: "0.55rem" }}>
+            {currentMeta}
+          </div>
+        )}
+        {current.hint && (
+          <div className="learn-fc-muted" style={{ fontSize: "0.9rem", marginBottom: "0.75rem" }}>
+            {current.hint}
+          </div>
+        )}
+        {method === "flash" && (
+          <>
+            <div className="learn-fc-front" style={{ fontSize: "clamp(1.35rem, 3.5vw, 1.85rem)", fontWeight: 600 }}>
+              {current.front}
+            </div>
+            {mode === "reveal" && <div className="learn-fc-back">{current.back}</div>}
+            {mode === "front" && (
+              <p className="learn-fc-hint-tip" style={{ marginTop: "2rem" }}>
+                Tippen oder Enter – Karte umdrehen
+              </p>
+            )}
+          </>
+        )}
+        {method === "type" && (
+          <div>
+            <div
+              className="learn-fc-front"
+              style={{ fontSize: "clamp(1.25rem, 3vw, 1.6rem)", fontWeight: 600, marginBottom: "1rem" }}
+            >
+              Übersetzung für:{" "}
+              <span className="learn-fc-meta" style={{ fontWeight: 700 }}>
+                {current.front}
+              </span>
+            </div>
+
+            <input
+              type="text"
+              className={`learn-fc-input${typeFeedback === "incorrect" ? " feedback-incorrect" : ""}${typeFeedback === "correct" ? " feedback-correct" : ""}`}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (typeFeedback === null) checkTyped();
+                  else proceedAfterTypeFeedback();
+                }
+              }}
+              placeholder="Antwort…"
+              autoComplete="off"
+              disabled={typeFeedback !== null}
+              aria-invalid={typeFeedback === "incorrect" ? true : undefined}
+              autoFocus={typeFeedback === null}
+            />
+
+            {typeFeedback === "correct" && (
+              <div
+                role="status"
+                style={
+                  cardLook === "paper"
+                    ? {
+                        marginTop: "1rem",
+                        padding: "1rem 1.1rem",
+                        borderRadius: 12,
+                        border: "1px solid rgba(46,130,96,0.4)",
+                        background: "rgba(230,246,237,0.95)",
+                        color: "var(--fc-success-text)",
+                        fontWeight: 600,
+                      }
+                    : {
+                        marginTop: "1rem",
+                        padding: "1rem 1.1rem",
+                        borderRadius: 12,
+                        border: "1px solid rgba(91,185,140,0.45)",
+                        background: "rgba(91,185,140,0.08)",
+                        color: "var(--success)",
+                        fontWeight: 600,
+                      }
+                }
+              >
+                ✓ Richtig
+              </div>
+            )}
+
+            {typeFeedback === "incorrect" && (
+              <div
+                role="alert"
+                style={
+                  cardLook === "paper"
+                    ? {
+                        marginTop: "1rem",
+                        padding: "1rem 1.1rem",
+                        borderRadius: 12,
+                        border: "1px solid rgba(180,70,70,0.4)",
+                        background: "rgba(252, 236, 236, 0.95)",
+                        color: "var(--fc-ink)",
+                      }
+                    : {
+                        marginTop: "1rem",
+                        padding: "1rem 1.1rem",
+                        borderRadius: 12,
+                        border: "1px solid rgba(224,122,122,0.45)",
+                        background: "rgba(224,122,122,0.06)",
+                        color: "var(--ink)",
+                      }
+                }
+              >
+                <div
+                  style={{
+                    fontWeight: 700,
+                    color: cardLook === "paper" ? "#a83838" : "var(--danger)",
+                    marginBottom: "0.5rem",
+                  }}
+                >
+                  ✕ Falsch
+                </div>
+                <div className="learn-fc-muted" style={{ fontSize: "0.95rem" }}>
+                  Richtige Antwort:
+                </div>
+                <div
+                  style={{
+                    fontSize: "1.1rem",
+                    color: cardLook === "paper" ? "var(--fc-success-text)" : "var(--success)",
+                    fontWeight: 600,
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  {current.back}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: "1rem", display: "flex", gap: "0.6rem", flexWrap: "wrap", alignItems: "center" }}>
+              {typeFeedback === null ? (
+                <button
+                  type="button"
+                  disabled={!typed.trim()}
+                  onClick={checkTyped}
+                  style={{
+                    padding: "0.65rem 1.35rem",
+                    borderRadius: 999,
+                    border: "none",
+                    background: typed.trim() ? "var(--accent)" : "var(--bg-raised)",
+                    color: typed.trim() ? "#12151c" : "var(--ink-muted)",
+                    fontWeight: 700,
+                    cursor: typed.trim() ? "pointer" : "not-allowed",
+                  }}
+                >
+                  Prüfen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={proceedAfterTypeFeedback}
+                  autoFocus
+                  style={{
+                    padding: "0.65rem 1.35rem",
+                    borderRadius: 999,
+                    border: "none",
+                    background: "var(--accent)",
+                    color: "#12151c",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Weiter
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {method === "flash" && mode === "reveal" && (
+        <div>
+          <p
+            style={{
+              margin: "0 0 0.65rem",
+              fontSize: "0.95rem",
+              color: "var(--ink-muted)",
+              textAlign: "center",
+              fontWeight: 500,
+            }}
+          >
+            Wie gut erinnert?:
+          </p>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "row",
+              gap: "0.45rem",
+              width: "100%",
+            }}
+          >
+            <RatingButton label="gar nicht" tone="danger" onClick={() => updateCurrent("again")} />
+            <RatingButton label="schlecht" tone="muted" onClick={() => updateCurrent("hard")} />
+            <RatingButton label="gut" tone="accent" onClick={() => updateCurrent("good")} />
+            <RatingButton label="einfach" tone="good" onClick={() => updateCurrent("easy")} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RatingButton({
+  label,
+  tone,
+  onClick,
+}: {
+  label: string;
+  tone: "danger" | "muted" | "accent" | "good";
+  onClick: () => void;
+}) {
+  const border =
+    tone === "danger"
+      ? "rgba(224,122,122,0.45)"
+      : tone === "good"
+        ? "rgba(91,185,140,0.45)"
+        : tone === "accent"
+          ? "rgba(201,162,39,0.45)"
+          : "rgba(139,148,168,0.35)";
+  const toneColor =
+    tone === "danger"
+      ? "var(--danger)"
+      : tone === "good"
+        ? "var(--success)"
+        : tone === "accent"
+          ? "var(--accent)"
+          : "var(--ink-muted)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        padding: "0.7rem 0.4rem",
+        borderRadius: 12,
+        border: `1px solid ${border}`,
+        background: "var(--bg-raised)",
+        color: toneColor,
+        cursor: "pointer",
+        textAlign: "center",
+        fontWeight: 600,
+        fontSize: "clamp(0.78rem, 2.4vw, 0.95rem)",
+        lineHeight: 1.2,
+        fontFamily: "var(--font-ui)",
+      }}
+    >
+      {label}
+    </button>
+  );
+}

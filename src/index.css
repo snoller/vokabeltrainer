@@ -1,0 +1,248 @@
+:root {
+  --bg-deep: #0f1218;
+  --bg-raised: #171b24;
+  --bg-card: #1e2430;
+  --ink: #e8eaef;
+  --ink-muted: #8b94a8;
+  --accent: #c9a227;
+  --accent-dim: #8f7620;
+  --success: #5bb98c;
+  --danger: #e07a7a;
+  --radius: 14px;
+  --font-display: "Literata", Georgia, serif;
+  --font-ui: "Atkinson Hyperlegible", system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--font-ui);
+  font-size: 105%;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg-deep);
+  background-image:
+    radial-gradient(ellipse 120% 80% at 15% -20%, rgba(201, 162, 39, 0.12), transparent 50%),
+    radial-gradient(ellipse 80% 60% at 100% 10%, rgba(91, 185, 140, 0.06), transparent 45%),
+    linear-gradient(180deg, #12151c 0%, var(--bg-deep) 40%);
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+button {
+  font-family: var(--font-ui);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.animate-in {
+  animation: fadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.stagger > * {
+  animation: fadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0.05s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.15s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.2s;
+}
+
+/** Lern-Karteikarte: weiß liniiert (Papier) */
+.learn-flashcard.learn-flashcard--paper {
+  --fc-paper: #fcfbf9;
+  --fc-ink: #1c2230;
+  --fc-muted: #596174;
+  --fc-accent-text: #6b5820;
+  --fc-success-text: #1a6848;
+  --fc-line-blue: rgba(74, 118, 190, 0.22);
+  --fc-margin-pink: rgba(230, 98, 98, 0.42);
+
+  padding: 1.75rem clamp(1rem, 3vw, 2rem) 1.75rem clamp(2.5rem, 5vw, 2.85rem);
+
+  color: var(--fc-ink);
+  background-color: var(--fc-paper);
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 34px,
+      var(--fc-margin-pink) 34px,
+      var(--fc-margin-pink) 36px,
+      transparent 36px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      var(--fc-paper) 0,
+      var(--fc-paper) 27px,
+      var(--fc-line-blue) 27px,
+      var(--fc-line-blue) 28px
+    );
+  background-position: 0 0, 0 14px;
+  border: 1px solid rgba(24, 30, 42, 0.14);
+  border-radius: 10px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.75) inset,
+    0 20px 44px rgba(0, 0, 0, 0.32);
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-meta {
+  color: var(--fc-accent-text);
+  font-weight: 600;
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-muted {
+  color: var(--fc-muted);
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-front {
+  font-family: var(--font-display);
+  color: var(--fc-ink);
+  line-height: 1.6;
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-back {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed rgba(28, 34, 48, 0.22);
+  font-size: clamp(1.1rem, 2.8vw, 1.45rem);
+  color: var(--fc-success-text);
+  line-height: 1.55;
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-hint-tip {
+  color: var(--fc-muted);
+  font-size: 0.9rem;
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  border-radius: 10px;
+  border: 1px solid rgba(28, 34, 48, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--fc-ink);
+  font-family: var(--font-ui);
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-input:disabled {
+  background: rgba(248, 248, 250, 0.95);
+  opacity: 0.95;
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-input.feedback-incorrect {
+  border-color: rgba(176, 60, 60, 0.55);
+}
+
+.learn-flashcard.learn-flashcard--paper .learn-fc-input.feedback-correct {
+  border-color: rgba(40, 120, 90, 0.45);
+}
+
+/** Lern-Karteikarte: dunkel wie App-Hintergrund (vorheriges Standard-) */
+.learn-flashcard.learn-flashcard--dark {
+  padding: 1.75rem clamp(1rem, 3vw, 2rem);
+  color: var(--ink);
+  background-color: var(--bg-card);
+  background-image: none;
+  border: 1px solid rgba(232, 234, 239, 0.08);
+  border-radius: var(--radius);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-meta {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-muted {
+  color: var(--ink-muted);
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-front {
+  font-family: var(--font-display);
+  color: var(--ink);
+  line-height: 1.6;
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-back {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed rgba(232, 234, 239, 0.15);
+  font-size: clamp(1.1rem, 2.8vw, 1.45rem);
+  color: var(--success);
+  line-height: 1.55;
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-hint-tip {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  border-radius: 10px;
+  border: 1px solid rgba(232, 234, 239, 0.15);
+  background: var(--bg-deep);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-input:disabled {
+  background: var(--bg-raised);
+  opacity: 0.92;
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-input.feedback-incorrect {
+  border-color: rgba(224, 122, 122, 0.5);
+}
+
+.learn-flashcard.learn-flashcard--dark .learn-fc-input.feedback-correct {
+  border-color: rgba(91, 185, 140, 0.5);
+}
