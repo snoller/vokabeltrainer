@@ -4,6 +4,7 @@ import Learn from "@/pages/Learn";
 import Library from "@/pages/Library";
 import ProfilePage from "@/pages/ProfilePage";
 import Scan from "@/pages/Scan";
+import Stats from "@/pages/Stats";
 
 import ProfileUnlockGate from "@/components/ProfileUnlockGate";
 import ProfileHeaderSelect from "@/components/ProfileHeaderSelect";
@@ -15,6 +16,7 @@ function Layout() {
     { to: "/lernen", label: "Lernen" },
     { to: "/bibliothek", label: "Bibliothek" },
     { to: "/scan", label: "Foto-Scan" },
+    { to: "/statistik", label: "Statistik" },
     { to: "/profil", label: "Profil" },
   ];
 
@@ -95,6 +97,7 @@ export default function App() {
         <Route path="lernen" element={<Learn />} />
         <Route path="bibliothek" element={<Library />} />
         <Route path="scan" element={<Scan />} />
+        <Route path="statistik" element={<Stats />} />
         <Route path="profil" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -169,17 +169,18 @@ export default function Learn() {
       }
     : {};
 
-  /** Im Fokus: Karte + Bewertung als Block zentriert, ohne Seiten-Scroll */
+  /** Im Fokus: Nur so hoch wie nötig; innerCol zentriert den Block vertikal auf dem Bildschirm */
   const focusWrapStyle: CSSProperties = focusMode
     ? {
         display: "flex",
         flexDirection: "column",
         alignItems: "stretch",
-        justifyContent: "center",
+        justifyContent: "flex-start",
         width: "min(560px, calc(100vw - 1.5rem))",
-        flex: "1 1 0px",
+        flex: "0 1 auto",
         minHeight: 0,
-        maxHeight: "100%",
+        maxHeight:
+          "calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - clamp(6.75rem, 18dvh, 9rem))",
         gap: "clamp(0.4rem, 1.5dvh, 0.75rem)",
         boxSizing: "border-box",
       }
@@ -195,28 +196,28 @@ export default function Learn() {
         alignItems: "center",
         justifyContent: "center",
         padding:
-          "max(2.65rem, calc(env(safe-area-inset-top) + 1.5rem)) 0.75rem max(0.35rem, env(safe-area-inset-bottom))",
+          "max(3rem, calc(env(safe-area-inset-top) + 1.85rem)) 0.75rem max(0.75rem, env(safe-area-inset-bottom))",
         overflow: "hidden",
       }
     : {};
 
   const cardStageStyle: CSSProperties = focusMode
     ? {
-        flex: "1 1 0px",
+        flex: "0 1 auto",
         minHeight: 0,
         minWidth: 0,
         width: "100%",
         display: "flex",
-        alignItems: "center",
+        alignItems: "stretch",
         justifyContent: "center",
         overflow: "hidden",
+        maxHeight: "calc(100% - 1px)",
       }
     : {};
 
   const cardBoxStyle: CSSProperties = focusMode
     ? {
         width: "100%",
-        height: "100%",
         maxHeight: "100%",
         minHeight: 0,
         display: "flex",
@@ -352,9 +353,7 @@ export default function Learn() {
                 ...(focusMode
                   ? {
                       width: "100%",
-                      maxHeight: "100%",
-                      minHeight: 0,
-                      flex: "1 1 auto",
+                      maxHeight: "min(72dvh, calc(100dvh - 14rem))",
                       overflowY: "auto",
                       WebkitOverflowScrolling: "touch",
                     }
