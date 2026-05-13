@@ -152,43 +152,76 @@ export default function Learn() {
         position: "fixed",
         inset: 0,
         zIndex: 9998,
+        width: "100%",
+        height: "100%",
+        minHeight: "100dvh",
+        maxHeight: "100dvh",
         background:
           "linear-gradient(180deg, #0f1218 0%, #12151c 36%, var(--bg-deep) 100%)",
         display: "flex",
         flexDirection: "column",
-        padding: "clamp(0.65rem, 3vw, 1.25rem)",
-        paddingTop: "max(0.85rem, env(safe-area-inset-top))",
-        paddingBottom: "max(0.85rem, env(safe-area-inset-bottom))",
-        paddingLeft: "max(0.85rem, env(safe-area-inset-left))",
-        paddingRight: "max(0.85rem, env(safe-area-inset-right))",
         overflow: "hidden",
         boxSizing: "border-box",
-        position: "relative",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
       }
     : {};
 
+  /** Im Fokus: Karte + Bewertung als Block zentriert, ohne Seiten-Scroll */
+  const focusWrapStyle: CSSProperties = focusMode
+    ? {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
+        justifyContent: "center",
+        width: "min(560px, calc(100vw - 1.5rem))",
+        flex: "1 1 0px",
+        minHeight: 0,
+        maxHeight: "100%",
+        gap: "clamp(0.4rem, 1.5dvh, 0.75rem)",
+        boxSizing: "border-box",
+      }
+    : { display: "contents" };
+
   const innerColStyle: CSSProperties = focusMode
-    ? { flex: 1, display: "flex", flexDirection: "column", minHeight: 0, gap: "0.65rem", paddingTop: "2.25rem" }
+    ? {
+        flex: 1,
+        minHeight: 0,
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding:
+          "max(2.65rem, calc(env(safe-area-inset-top) + 1.5rem)) 0.75rem max(0.35rem, env(safe-area-inset-bottom))",
+        overflow: "hidden",
+      }
     : {};
 
   const cardStageStyle: CSSProperties = focusMode
     ? {
-        flex: 1,
+        flex: "1 1 0px",
+        minHeight: 0,
+        minWidth: 0,
+        width: "100%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        minHeight: 0,
-        overflow: "auto",
+        overflow: "hidden",
       }
     : {};
 
   const cardBoxStyle: CSSProperties = focusMode
     ? {
         width: "100%",
-        maxWidth: 640,
-        margin: "0 auto",
-        minHeight: "min(58vh, 420px)",
-        flexShrink: 0,
+        height: "100%",
+        maxHeight: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "stretch",
       }
     : {};
 
@@ -301,6 +334,7 @@ export default function Learn() {
       )}
 
       <div style={innerColStyle}>
+        <div style={focusWrapStyle}>
         <div style={cardStageStyle}>
           <div style={cardBoxStyle}>
             <div
@@ -315,7 +349,17 @@ export default function Learn() {
                 }
               }}
               style={{
-                minHeight: focusMode ? "min(58vh, 420px)" : 220,
+                ...(focusMode
+                  ? {
+                      width: "100%",
+                      maxHeight: "100%",
+                      minHeight: 0,
+                      flex: "1 1 auto",
+                      overflowY: "auto",
+                      WebkitOverflowScrolling: "touch",
+                    }
+                  : {}),
+                minHeight: focusMode ? undefined : 220,
                 cursor: method === "flash" && mode === "front" ? "pointer" : "default",
                 marginBottom: focusMode ? 0 : "1.25rem",
               }}
@@ -499,8 +543,6 @@ export default function Learn() {
             style={{
               flexShrink: 0,
               width: "100%",
-              maxWidth: focusMode ? 640 : undefined,
-              margin: focusMode ? "0 auto" : undefined,
             }}
           >
             <p
@@ -522,13 +564,14 @@ export default function Learn() {
                 width: "100%",
               }}
             >
-              <RatingButton label="gar nicht" tone="danger" onClick={() => updateCurrent("again")} />
-              <RatingButton label="schlecht" tone="muted" onClick={() => updateCurrent("hard")} />
-              <RatingButton label="gut" tone="accent" onClick={() => updateCurrent("good")} />
-              <RatingButton label="einfach" tone="good" onClick={() => updateCurrent("easy")} />
+              <RatingButton compact={focusMode} label="gar nicht" tone="danger" onClick={() => updateCurrent("again")} />
+              <RatingButton compact={focusMode} label="schlecht" tone="muted" onClick={() => updateCurrent("hard")} />
+              <RatingButton compact={focusMode} label="gut" tone="accent" onClick={() => updateCurrent("good")} />
+              <RatingButton compact={focusMode} label="einfach" tone="good" onClick={() => updateCurrent("easy")} />
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
@@ -538,10 +581,12 @@ function RatingButton({
   label,
   tone,
   onClick,
+  compact,
 }: {
   label: string;
   tone: "danger" | "muted" | "accent" | "good";
   onClick: () => void;
+  compact?: boolean;
 }) {
   const border =
     tone === "danger"
@@ -568,7 +613,7 @@ function RatingButton({
       style={{
         flex: 1,
         minWidth: 0,
-        padding: "0.7rem 0.4rem",
+        padding: compact ? "0.55rem 0.25rem" : "0.7rem 0.4rem",
         borderRadius: 12,
         border: `1px solid ${border}`,
         background: "var(--bg-raised)",
@@ -576,7 +621,7 @@ function RatingButton({
         cursor: "pointer",
         textAlign: "center",
         fontWeight: 600,
-        fontSize: "clamp(0.78rem, 2.4vw, 0.95rem)",
+        fontSize: compact ? "clamp(0.7rem, 2.6vw, 0.85rem)" : "clamp(0.78rem, 2.4vw, 0.95rem)",
         lineHeight: 1.2,
         fontFamily: "var(--font-ui)",
       }}
