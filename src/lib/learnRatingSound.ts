@@ -1,17 +1,37 @@
 import type { ReviewQuality } from "@/lib/srs";
 
-/** Kurzer Warnton pro Bewertung (Web Audio, kein externes Asset); iOS: bei erster Tap/Wisch-Geste freigeschaltet */
+let sharedCtx: AudioContext | null = null;
+
+function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (sharedCtx != null && sharedCtx.state !== "closed") return sharedCtx;
+  const Win = window;
+  const AC =
+    Win.AudioContext ?? (Win as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AC) return null;
+  sharedCtx = new AC();
+  return sharedCtx;
+}
+
+/** Kurzer Warnton pro Bewertung (Web Audio, kein externes Asset); gemeinsamer Kontext + resume für iOS/Safari */
 export function playLearnRatingBlip(q: ReviewQuality): void {
+  void playLearnRatingBlipAsync(q);
+}
+
+async function playLearnRatingBlipAsync(q: ReviewQuality): Promise<void> {
   try {
-    const Win = typeof window !== "undefined" ? window : undefined;
-    const AC = Win?.AudioContext ?? (Win as Window & { webkitAudioContext?: typeof AudioContext })?.webkitAudioContext;
-    if (!AC) return;
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended" || ctx.state === "interrupted") {
+      await ctx.resume().catch(() => undefined);
+    }
+    if (ctx.state === "closed") {
+      sharedCtx = null;
+      return;
+    }
 
     const hz =
       q === "again" ? 150 : q === "hard" ? 220 : q === "good" ? 380 : q === "easy" ? 520 : 340;
-    const ctx = new AC();
-    if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
-
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -24,7 +44,7 @@ export function playLearnRatingBlip(q: ReviewQuality): void {
     }
 
     gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.065, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.1, now + 0.012);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
 
     osc.connect(gain);
@@ -33,14 +53,14 @@ export function playLearnRatingBlip(q: ReviewQuality): void {
     osc.start(now);
     osc.stop(end + 0.015);
 
-    const closeAt = Math.round((end + 0.12) * 1000);
-    window.setTimeout(() => {
+    osc.onended = () => {
       try {
-        void ctx.close();
+        osc.disconnect();
+        gain.disconnect();
       } catch {
         /* ignore */
       }
-    }, closeAt);
+    };
   } catch {
     /* ignore */
   }
