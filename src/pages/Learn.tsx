@@ -2,6 +2,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -28,6 +29,8 @@ import {
   setLearnFlashcardAppearance,
   type LearnFlashcardAppearance,
 } from "@/lib/learnFlashcardAppearance";
+import { recordLearnMotivationReview } from "@/lib/learnMotivation";
+import { getActiveProfileId } from "@/lib/profile";
 import { getCardsStorageSnapshot, parseCardsSnapshot, saveCards } from "@/lib/storage";
 import { normalizeAnswerForCompare } from "@/lib/textNorm";
 import { isDue, scheduleNext, type ReviewQuality } from "@/lib/srs";
@@ -86,12 +89,41 @@ export default function Learn() {
   const queue = useMemo(() => pickDueQueue(cards, now), [cards, now]);
   const current = queue[0];
 
+  /** Niederschwellige Motivation: keine Streaks, nur diese Einheit + Gesamtzähler (s. learnMotivation) */
+  const prevHadDueRef = useRef(false);
+  const queuedAtLearnWaveStartRef = useRef(0);
+  const sessionReviewCountRef = useRef(0);
+  const [sessionReviewCount, setSessionReviewCount] = useState(0);
+
+  useLayoutEffect(() => {
+    const hasDue = queue.length > 0;
+    if (hasDue && !prevHadDueRef.current) {
+      queuedAtLearnWaveStartRef.current = queue.length;
+      sessionReviewCountRef.current = 0;
+      setSessionReviewCount(0);
+    }
+    prevHadDueRef.current = hasDue;
+  }, [queue.length]);
+
   useEffect(() => {
     setTypeFeedback(null);
     setTyped("");
   }, [current?.id, method]);
 
   const [focusMode, setFocusMode] = useState(false);
+
+  /** Im Fokus: Erklärtexte bei Rückseite kurz zeigen, dann ausblenden */
+  const [focusCoachPeek, setFocusCoachPeek] = useState(false);
+
+  useEffect(() => {
+    if (!focusMode || method !== "flash" || mode !== "reveal") {
+      setFocusCoachPeek(false);
+      return;
+    }
+    setFocusCoachPeek(true);
+    const id = window.setTimeout(() => setFocusCoachPeek(false), 7000);
+    return () => window.clearTimeout(id);
+  }, [focusMode, method, mode, current?.id]);
 
   useEffect(() => {
     if (!focusMode) return;
@@ -136,13 +168,25 @@ export default function Learn() {
   const persistRating = useCallback(
     (quality: ReviewQuality) => {
       if (!current) return;
-      const nextSrs = scheduleNext(current.srs, quality, Date.now());
+      const nowMs = Date.now();
+      const nextSrs = scheduleNext(current.srs, quality, nowMs);
       const updated = cards.map((c) => (c.id === current.id ? { ...c, srs: nextSrs } : c));
       saveCards(updated);
       notify();
       setMode("front");
       setTyped("");
-      setNow(Date.now());
+      setNow(nowMs);
+
+      sessionReviewCountRef.current += 1;
+      const sessionN = sessionReviewCountRef.current;
+      setSessionReviewCount(sessionN);
+      const remainingDue = pickDueQueue(updated, nowMs).length;
+      recordLearnMotivationReview({
+        profileId: getActiveProfileId(),
+        completedEmptiedQueue: remainingDue === 0,
+        sessionReviewsSoFar: sessionN,
+        queuedAtSessionStart: Math.max(1, queuedAtLearnWaveStartRef.current),
+      });
     },
     [cards, current]
   );
@@ -487,9 +531,10 @@ export default function Learn() {
   return (
     <div style={shellStyle}>
       {!focusMode && (
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem", marginBottom: "1rem" }}>
-          <h1 style={{ margin: 0 }}>Lernen</h1>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.85rem", alignItems: "center", justifyContent: "flex-end" }}>
+        <div style={{ marginBottom: "1rem" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+            <h1 style={{ margin: 0 }}>Lernen</h1>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.85rem", alignItems: "center", justifyContent: "flex-end" }}>
             <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
               <span style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }} id="learn-cardlook-label">
                 Karteikarte
@@ -540,6 +585,30 @@ export default function Learn() {
                 <option value="type">Eintippen</option>
               </select>
             </div>
+            <label
+              htmlFor="learn-rating-sound"
+              title="Kurzton bei Bewertung (Swipe oder Tipp auf die Buttons)"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.4rem",
+                cursor: "pointer",
+                fontSize: "0.88rem",
+                color: "var(--ink-muted)",
+                userSelect: "none",
+                fontFamily: "var(--font-ui)",
+              }}
+            >
+              <input
+                id="learn-rating-sound"
+                type="checkbox"
+                checked={ratingSoundOn}
+                onChange={(e) => setLearnRatingSound(e.target.checked)}
+                style={{ width: "0.92rem", height: "0.92rem", flexShrink: 0 }}
+              />
+              <span>Ton bei Bewertung</span>
+            </label>
+
             <button
               type="button"
               onClick={() => setFocusMode(true)}
@@ -558,37 +627,103 @@ export default function Learn() {
               Fokus
             </button>
           </div>
+          </div>
         </div>
       )}
 
       {focusMode && (
-        <button
-          type="button"
-          onClick={() => setFocusMode(false)}
-          aria-label="Fokus-Modus beenden"
+        <div
           style={{
             position: "absolute",
             top: "max(0.65rem, env(safe-area-inset-top))",
+            left: "max(0.65rem, env(safe-area-inset-left))",
             right: "max(0.65rem, env(safe-area-inset-right))",
             zIndex: 2,
-            padding: "0.45rem 0.9rem",
-            borderRadius: 999,
-            border: "1px solid rgba(232, 234, 239, 0.2)",
-            background: "var(--bg-raised)",
-            color: "var(--ink)",
-            fontWeight: 600,
-            fontSize: "0.88rem",
-            cursor: "pointer",
-            fontFamily: "var(--font-ui)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "stretch",
+            gap: "0.2rem",
+            pointerEvents: "none",
           }}
         >
-          Beenden
-        </button>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.5rem",
+              width: "100%",
+            }}
+          >
+          <button
+            type="button"
+            onClick={() => setLearnRatingSound(!ratingSoundOn)}
+            aria-pressed={ratingSoundOn}
+            title="Ton bei Bewertung"
+            style={{
+              pointerEvents: "auto",
+              padding: "0.4rem 0.72rem",
+              borderRadius: 999,
+              border: ratingSoundOn
+                ? "1px solid rgba(201, 162, 39, 0.5)"
+                : "1px solid rgba(232, 234, 239, 0.2)",
+              background: ratingSoundOn ? "rgba(201, 162, 39, 0.14)" : "var(--bg-raised)",
+              color: ratingSoundOn ? "var(--accent)" : "var(--ink-muted)",
+              fontWeight: 600,
+              fontSize: "0.8rem",
+              cursor: "pointer",
+              fontFamily: "var(--font-ui)",
+            }}
+          >
+            Ton {ratingSoundOn ? "an" : "aus"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFocusMode(false)}
+            aria-label="Fokus-Modus beenden"
+            style={{
+              pointerEvents: "auto",
+              marginLeft: "auto",
+              padding: "0.45rem 0.9rem",
+              borderRadius: 999,
+              border: "1px solid rgba(232, 234, 239, 0.2)",
+              background: "var(--bg-raised)",
+              color: "var(--ink)",
+              fontWeight: 600,
+              fontSize: "0.88rem",
+              cursor: "pointer",
+              fontFamily: "var(--font-ui)",
+            }}
+          >
+            Beenden
+          </button>
+          </div>
+          {current != null && queue.length > 0 && (
+            <p
+              style={{
+                margin: 0,
+                textAlign: "center",
+                fontSize: "0.76rem",
+                color: "var(--ink-muted)",
+                lineHeight: 1.35,
+                fontWeight: 500,
+              }}
+            >
+              Einheit:&nbsp;<strong>{sessionReviewCount}</strong> · noch&nbsp;<strong>{queue.length}</strong> fällig
+            </p>
+          )}
+        </div>
       )}
 
       {!focusMode && (
         <p style={{ color: "var(--ink-muted)", marginTop: 0, fontSize: "0.95rem" }}>
-          Noch {queue.length} fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
+          {sessionReviewCount > 0 && (
+            <>
+              Schon <strong>{sessionReviewCount}</strong>{" "}
+              {sessionReviewCount === 1 ? "Bewertung" : "Bewertungen"} in dieser Einheit ·{" "}
+            </>
+          )}
+          Noch <strong>{queue.length}</strong> fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
         </p>
       )}
 
@@ -842,51 +977,37 @@ export default function Learn() {
               width: "100%",
             }}
           >
-            <p
-              style={{
-                margin: "0 0 0.65rem",
-                fontSize: "0.95rem",
-                color: "var(--ink-muted)",
-                textAlign: "center",
-                fontWeight: 500,
-              }}
-            >
-              Wie gut erinnert?
-            </p>
-            <p
-              style={{
-                margin: "0 0 0.85rem",
-                fontSize: "0.82rem",
-                color: "var(--ink-muted)",
-                textAlign: "center",
-                lineHeight: 1.45,
-                opacity: 0.92,
-              }}
-            >
-              Touch am Kartenbereich:&nbsp;rechts · <strong>einfach</strong>, links&nbsp;· <strong>gar&nbsp;nicht</strong>, nach
-              oben&nbsp;· <strong>gut</strong>, nach unten&nbsp;· <strong>schlecht</strong>
-            </p>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.45rem",
-                margin: "0 0 0.75rem",
-                fontSize: "0.8rem",
-                color: "var(--ink-muted)",
-                cursor: "pointer",
-                userSelect: "none",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={ratingSoundOn}
-                onChange={(e) => setLearnRatingSound(e.target.checked)}
-                style={{ width: "0.95rem", height: "0.95rem", flexShrink: 0 }}
-              />
-              <span>Ton bei Bewertung (Kurzsignal)</span>
-            </label>
+            {(!focusMode || focusCoachPeek) && (
+              <>
+                <p
+                  style={{
+                    margin: "0 0 0.65rem",
+                    fontSize: "0.95rem",
+                    color: "var(--ink-muted)",
+                    textAlign: "center",
+                    fontWeight: 500,
+                    transition: "opacity 0.45s ease",
+                  }}
+                >
+                  Wie gut erinnert?
+                </p>
+                <p
+                  style={{
+                    margin: "0 0 0.85rem",
+                    fontSize: "0.82rem",
+                    color: "var(--ink-muted)",
+                    textAlign: "center",
+                    lineHeight: 1.45,
+                    opacity: 0.92,
+                    transition: "opacity 0.45s ease",
+                  }}
+                >
+                  Auf der Karte wischen:&nbsp;rechts · <strong>einfach</strong>, links&nbsp;· <strong>
+                    gar&nbsp;nicht
+                  </strong>, nach oben · <strong>gut</strong>, nach unten · <strong>schlecht</strong>
+                </p>
+              </>
+            )}
             <div
               style={{
                 display: "flex",

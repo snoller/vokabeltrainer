@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 import { useMemo, useSyncExternalStore } from "react";
+import type { LearnMotivationState } from "@/lib/learnMotivation";
+import { getLearnMotivationSnapshot, subscribeLearnMotivation } from "@/lib/learnMotivation";
 import { getCardsStorageSnapshot, parseCardsSnapshot } from "@/lib/storage";
 import { isDue } from "@/lib/srs";
 
@@ -17,6 +19,21 @@ function subscribe(cb: () => void) {
 export default function Home() {
   const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
   const cards = useMemo(() => parseCardsSnapshot(raw), [raw]);
+  const motivationRaw = useSyncExternalStore(
+    subscribeLearnMotivation,
+    getLearnMotivationSnapshot,
+    () => JSON.stringify({ totalReviews: 0 } satisfies LearnMotivationState)
+  );
+  const motivation = useMemo((): LearnMotivationState => {
+    try {
+      const x = JSON.parse(motivationRaw) as LearnMotivationState;
+      const total = typeof x.totalReviews === "number" && Number.isFinite(x.totalReviews) ? Math.max(0, Math.floor(x.totalReviews)) : 0;
+      return { totalReviews: total, lastEmptiedQueue: x.lastEmptiedQueue };
+    } catch {
+      return { totalReviews: 0 };
+    }
+  }, [motivationRaw]);
+
   const now = Date.now();
 
   const stats = useMemo(() => {
@@ -67,6 +84,45 @@ export default function Home() {
           <div style={{ color: "var(--ink-muted)", fontSize: "0.9rem" }}>fällig jetzt</div>
         </div>
       </div>
+
+      {(motivation.totalReviews > 0 || motivation.lastEmptiedQueue) && (
+        <section
+          style={{
+            padding: "1rem 1.15rem",
+            marginBottom: "1.75rem",
+            borderRadius: "var(--radius)",
+            border: "1px solid rgba(201, 162, 39, 0.2)",
+            background: "rgba(201, 162, 39, 0.06)",
+            maxWidth: "54ch",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: "0.5rem", color: "var(--ink)", fontSize: "0.95rem" }}>
+            Dein Überblick
+          </div>
+          {motivation.totalReviews > 0 && (
+            <p style={{ margin: "0 0 0.5rem", fontSize: "0.92rem", color: "var(--ink)", lineHeight: 1.5 }}>
+              Insgesamt <strong>{motivation.totalReviews}</strong>{" "}
+              {motivation.totalReviews === 1 ? "Bewertung" : "Bewertungen"} beim Lernen – unabhängig davon,
+              wie oft du Pausen machst.
+            </p>
+          )}
+          {motivation.lastEmptiedQueue ? (
+            <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--ink-muted)", lineHeight: 1.5 }}>
+              <strong style={{ color: "var(--ink)" }}>Letzte Lerneinheit:</strong>{" "}
+              {motivation.lastEmptiedQueue.reviewsInSession}{" "}
+              {motivation.lastEmptiedQueue.reviewsInSession === 1 ? "Bewertung" : "Bewertungen"}, bis nichts mehr
+              fällig war (zu Beginn dieser Runde waren{" "}
+              <strong>{motivation.lastEmptiedQueue.queuedAtStart}</strong>{" "}
+              {motivation.lastEmptiedQueue.queuedAtStart === 1 ? "Karte" : "Karten"} dran).
+            </p>
+          ) : motivation.totalReviews > 0 ? (
+            <p style={{ margin: 0, fontSize: "0.88rem", color: "var(--ink-muted)", lineHeight: 1.5 }}>
+              Sobald du einmal bis zum leeren »fällig«-Stapel durcharbeitest, erscheint hier eine kurze Zusammenfassung –
+              ohne Tagesstress und ohne Serien-Streifen.
+            </p>
+          ) : null}
+        </section>
+      )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem" }}>
         <Link
