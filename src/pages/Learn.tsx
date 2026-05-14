@@ -22,7 +22,7 @@ import {
   setLearnRatingSound,
   subscribeLearnRatingSound,
 } from "@/lib/learnRatingSoundPref";
-import { LEARN_CARD_FLY_MS, ratingFlashOverlay } from "@/lib/learnRatingVisual";
+import { LEARN_CARD_FLY_MS, ratingFlashOverlay, ratingSwipeDragOverlay, swipeDragHintIntensity } from "@/lib/learnRatingVisual";
 import {
   LEARN_FLASHCARD_STORAGE_KEY,
   getLearnFlashcardAppearance,
@@ -58,7 +58,7 @@ function pickDueQueue(cards: VocabularyCard[], now: number): VocabularyCard[] {
 
 type CardSwipeUi =
   | { kind: "idle" }
-  | { kind: "drag"; tx: number; ty: number; rot: number }
+  | { kind: "drag"; tx: number; ty: number; rot: number; rdx: number; rdy: number }
   | { kind: "fly"; q: ReviewQuality; ux: number; uy: number; phase: "start" | "leave" };
 
 export default function Learn() {
@@ -293,6 +293,8 @@ export default function Learn() {
         tx: cap(rdx * 0.28),
         ty: cap(rdy * 0.28),
         rot: Math.max(-7, Math.min(7, rdx * 0.05)),
+        rdx,
+        rdy,
       });
     },
     [cardSwipe.kind, method, mode]
@@ -517,6 +519,13 @@ export default function Learn() {
   const glowQ: ReviewQuality | null = tapGlow ?? (cardSwipe.kind === "fly" ? cardSwipe.q : null);
   const glowOverlay = glowQ ? ratingFlashOverlay(glowQ) : null;
 
+  const swipeDragHintQ =
+    flashReveal && cardSwipe.kind === "drag" ? qualityFromSwipeVector(cardSwipe.rdx, cardSwipe.rdy) : null;
+  const swipeDragHintInten =
+    swipeDragHintQ != null ? swipeDragHintIntensity(cardSwipe.rdx, cardSwipe.rdy) : 0;
+  const swipeDragHintOverlayStyle =
+    swipeDragHintQ != null ? ratingSwipeDragOverlay(swipeDragHintQ, swipeDragHintInten) : null;
+
   const cardMotionStyle: CSSProperties = flashReveal
     ? {
         transform: `translate3d(${cardTx}px, ${cardTy}px, 0) rotate(${cardRot}deg) scale(${cardScale})`,
@@ -738,7 +747,7 @@ export default function Learn() {
                 marginBottom: focusMode ? 0 : "1.25rem",
               }}
             >
-              {flashReveal && glowOverlay && (
+              {flashReveal && swipeDragHintOverlayStyle && (
                 <div
                   aria-hidden
                   style={{
@@ -747,6 +756,21 @@ export default function Learn() {
                     borderRadius: 14,
                     pointerEvents: "none",
                     zIndex: 3,
+                    opacity: Math.min(0.78, 0.28 + swipeDragHintInten * 0.42),
+                    transition: "opacity 0.07s ease",
+                    ...swipeDragHintOverlayStyle,
+                  }}
+                />
+              )}
+              {flashReveal && glowOverlay && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: 14,
+                    pointerEvents: "none",
+                    zIndex: 4,
                     opacity: 0.62,
                     transition: "opacity 0.14s ease",
                     ...glowOverlay,
