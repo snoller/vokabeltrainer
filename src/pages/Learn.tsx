@@ -299,7 +299,7 @@ export default function Learn() {
       if (cardSwipe.kind === "fly") return;
       const rdx = e.clientX - s.x0;
       const rdy = e.clientY - s.y0;
-      if (Math.hypot(rdx, rdy) < 10) return;
+      if (Math.hypot(rdx, rdy) < 6) return;
       const cap = (n: number) => Math.sign(n) * Math.min(Math.abs(n), 62);
       setCardSwipe({
         kind: "drag",
@@ -326,7 +326,9 @@ export default function Learn() {
       const ay = Math.abs(dy);
       const clearDrag = () => setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
 
-      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS) {
+      /* Scroll nur dann als „lesen, nicht bewerten“, wenn der Wisch noch nicht klar genug ist –
+       * sonst bricht jede kleine Scroll-Bewegung bei langer Rückseite den Wisch ab. */
+      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS && Math.max(ax, ay) < LEARN_SWIPE_MIN_PX) {
         clearDrag();
         return;
       }

@@ -1,7 +1,7 @@
 import type { ReviewQuality } from "@/lib/srs";
 
-/** Mindestfingerweg (Pixel), damit keine Klicks wie Wischen gewertet werden */
-export const LEARN_SWIPE_MIN_PX = 52;
+/** Mindestfingerweg (Pixel), damit keine Klicks wie Wischen gewertet werden — etwas gnädiger für Touch */
+export const LEARN_SWIPE_MIN_PX = 42;
 
 /**
  * Unterhalb davon keine Ampeltönung beim Ziehen; darüber schon Hinweisfarben (bewerten tut die App weiter erst ab {@link LEARN_SWIPE_MIN_PX}).
