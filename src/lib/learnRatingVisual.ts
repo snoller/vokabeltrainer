@@ -1,4 +1,4 @@
-import { LEARN_SWIPE_MIN_PX } from "@/lib/learnSwipeRating";
+import { LEARN_SWIPE_MIN_PX, LEARN_SWIPE_TINT_HINT_MIN_PX } from "@/lib/learnSwipeRating";
 import type { ReviewQuality } from "@/lib/srs";
 
 /**
@@ -36,13 +36,20 @@ export function ratingFlashOverlay(quality: ReviewQuality): { background: string
 }
 
 /**
- * Sichtbarkeit der ziehen-Vorschau sobald die Wischrichtung eine Bewertung träfe (ab Mindestweg).
- * Kurze Wege nach dem Schwellwert = dezent, längere Züge = kräftiger.
+ * Intensität der Ampel beim Ziehen: erste Wege zwischen TINT-HINT und Bewertungsminimum dezent,
+ * danach analog zum Bewertungsweg kräftiger.
  */
 export function swipeDragHintIntensity(dx: number, dy: number): number {
   const m = Math.max(Math.abs(dx), Math.abs(dy));
-  const over = Math.max(0, m - LEARN_SWIPE_MIN_PX);
-  return Math.min(1, 0.18 + Math.min(1, over / 72) * 0.75);
+  const t0 = LEARN_SWIPE_TINT_HINT_MIN_PX;
+  const t1 = LEARN_SWIPE_MIN_PX;
+  if (m <= t0) return 0;
+  if (m < t1) {
+    const u = (m - t0) / (t1 - t0);
+    return Math.min(1, 0.12 + u * 0.48);
+  }
+  const over = m - t1;
+  return Math.min(1, 0.6 + Math.min(1, over / 72) * 0.4);
 }
 
 /** Eck-Tönung beim Ziehen — dieselbe Ampel wie `ratingFlashOverlay`, mit Wisch-Stärke. */

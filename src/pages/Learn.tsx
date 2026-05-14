@@ -15,6 +15,7 @@ import {
   LEARN_SCROLL_SUPPRESS_PIXELS,
   LEARN_SWIPE_MIN_PX,
   qualityFromSwipeVector,
+  qualityHintFromSwipeWhileDragging,
 } from "@/lib/learnSwipeRating";
 import { playLearnRatingBlip } from "@/lib/learnRatingSound";
 import {
@@ -520,11 +521,16 @@ export default function Learn() {
   const glowOverlay = glowQ ? ratingFlashOverlay(glowQ) : null;
 
   const swipeDragHintQ =
-    flashReveal && cardSwipe.kind === "drag" ? qualityFromSwipeVector(cardSwipe.rdx, cardSwipe.rdy) : null;
+    flashReveal && cardSwipe.kind === "drag"
+      ? qualityHintFromSwipeWhileDragging(cardSwipe.rdx, cardSwipe.rdy)
+      : null;
   const swipeDragHintInten =
     swipeDragHintQ != null ? swipeDragHintIntensity(cardSwipe.rdx, cardSwipe.rdy) : 0;
   const swipeDragHintOverlayStyle =
     swipeDragHintQ != null ? ratingSwipeDragOverlay(swipeDragHintQ, swipeDragHintInten) : null;
+
+  /** Passend zu `.learn-flashcard--paper` (10px) bzw. `--radius` dunkel */
+  const flashcardSwipeRadiusPx = cardLook === "paper" ? 10 : 14;
 
   const cardMotionStyle: CSSProperties = flashReveal
     ? {
@@ -747,36 +753,6 @@ export default function Learn() {
                 marginBottom: focusMode ? 0 : "1.25rem",
               }}
             >
-              {flashReveal && swipeDragHintOverlayStyle && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 14,
-                    pointerEvents: "none",
-                    zIndex: 3,
-                    opacity: Math.min(0.78, 0.28 + swipeDragHintInten * 0.42),
-                    transition: "opacity 0.07s ease",
-                    ...swipeDragHintOverlayStyle,
-                  }}
-                />
-              )}
-              {flashReveal && glowOverlay && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: 14,
-                    pointerEvents: "none",
-                    zIndex: 4,
-                    opacity: 0.62,
-                    transition: "opacity 0.14s ease",
-                    ...glowOverlay,
-                  }}
-                />
-              )}
               <div
                 className={`learn-flashcard learn-flashcard--${cardLook}`}
                 role="button"
@@ -798,7 +774,7 @@ export default function Learn() {
                 }}
                 style={{
                   position: "relative",
-                  zIndex: 2,
+                  isolation: flashReveal ? "isolate" : undefined,
                   ...(focusMode
                     ? {
                         width: "100%",
@@ -819,6 +795,36 @@ export default function Learn() {
                   ...cardMotionStyle,
                 }}
               >
+              {flashReveal && swipeDragHintOverlayStyle && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: flashcardSwipeRadiusPx,
+                    pointerEvents: "none",
+                    zIndex: 3,
+                    opacity: Math.min(0.88, 0.38 + swipeDragHintInten * 0.45),
+                    transition: "opacity 0.07s ease",
+                    ...swipeDragHintOverlayStyle,
+                  }}
+                />
+              )}
+              {flashReveal && glowOverlay && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: flashcardSwipeRadiusPx,
+                    pointerEvents: "none",
+                    zIndex: 4,
+                    opacity: 0.62,
+                    transition: "opacity 0.14s ease",
+                    ...glowOverlay,
+                  }}
+                />
+              )}
               {currentMeta && !focusMode && (
                 <div className="learn-fc-meta" style={{ fontSize: "0.85rem", marginBottom: "0.55rem" }}>
                   {currentMeta}
