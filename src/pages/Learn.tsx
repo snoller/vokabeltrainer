@@ -639,9 +639,9 @@ export default function Learn() {
           aria-hidden
           style={{
             position: "fixed",
+            top: "50%",
             left: "50%",
-            bottom: "max(0.9rem, calc(env(safe-area-inset-bottom) + 0.55rem))",
-            transform: "translateX(-50%)",
+            transform: "translate(-50%, -50%)",
             zIndex: 200,
             pointerEvents: "none",
           }}
