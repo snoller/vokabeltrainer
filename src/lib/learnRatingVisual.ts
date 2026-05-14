@@ -71,3 +71,25 @@ export function ratingSwipeDragOverlay(quality: ReviewQuality, intensity: number
 }
 
 export const LEARN_CARD_FLY_MS = 340;
+export const LEARN_RATING_DOCK_LINGER_MS = 520;
+
+/**
+ * Kleine fixe Ampel-Kugel (unten mittig): kräftige Füllfarbe + Rand,
+ * damit die Bewertung nach dem Wegwischen auch ohne Karten-Overlay gut erkennbar ist.
+ */
+export function ratingSwipeDockDotStyle(quality: ReviewQuality): {
+  background: string;
+  boxShadow: string;
+} {
+  const { fill, rim } = ampelOverlay(quality);
+  const [fr, fg, fb] = fill;
+  const [rr, rg, rb] = rim;
+  return {
+    background: `rgb(${fr},${fg},${fb})`,
+    boxShadow: [
+      `0 0 0 2px rgba(${rr},${rg},${rb},0.95)`,
+      `0 3px 12px rgba(0,0,0,0.35)`,
+      `0 0 20px rgba(${fr},${fg},${fb},0.55)`,
+    ].join(", "),
+  };
+}

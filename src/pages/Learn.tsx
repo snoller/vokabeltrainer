@@ -23,7 +23,14 @@ import {
   setLearnRatingSound,
   subscribeLearnRatingSound,
 } from "@/lib/learnRatingSoundPref";
-import { LEARN_CARD_FLY_MS, ratingFlashOverlay, ratingSwipeDragOverlay, swipeDragHintIntensity } from "@/lib/learnRatingVisual";
+import {
+  LEARN_CARD_FLY_MS,
+  LEARN_RATING_DOCK_LINGER_MS,
+  ratingFlashOverlay,
+  ratingSwipeDockDotStyle,
+  ratingSwipeDragOverlay,
+  swipeDragHintIntensity,
+} from "@/lib/learnRatingVisual";
 import {
   LEARN_FLASHCARD_STORAGE_KEY,
   getLearnFlashcardAppearance,
@@ -163,6 +170,8 @@ export default function Learn() {
 
   const [cardSwipe, setCardSwipe] = useState<CardSwipeUi>({ kind: "idle" });
   const [tapGlow, setTapGlow] = useState<ReviewQuality | null>(null);
+  const [ratingDockQ, setRatingDockQ] = useState<ReviewQuality | null>(null);
+  const flySwipeQuality = cardSwipe.kind === "fly" ? cardSwipe.q : null;
 
   const clearFlyCommitTimer = useCallback(() => {
     if (flyCommitTimerRef.current != null) {
@@ -251,6 +260,22 @@ export default function Learn() {
     revealSwipeRef.current.pointerId = null;
     resetLearnMotion();
   }, [mode, current?.id, resetLearnMotion]);
+
+  useEffect(() => {
+    if (flySwipeQuality != null) {
+      setRatingDockQ(flySwipeQuality);
+    } else if (cardSwipe.kind === "drag") {
+      setRatingDockQ(null);
+    }
+  }, [cardSwipe.kind, flySwipeQuality]);
+
+  useEffect(() => {
+    if (cardSwipe.kind === "fly") return;
+    if (ratingDockQ == null) return;
+    if (cardSwipe.kind === "drag") return;
+    const id = window.setTimeout(() => setRatingDockQ(null), LEARN_RATING_DOCK_LINGER_MS);
+    return () => window.clearTimeout(id);
+  }, [cardSwipe.kind, ratingDockQ]);
 
   useEffect(() => {
     return () => {
@@ -609,6 +634,29 @@ export default function Learn() {
 
   return (
     <div style={shellStyle}>
+      {method === "flash" && ratingDockQ != null && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: "max(0.9rem, calc(env(safe-area-inset-bottom) + 0.55rem))",
+            transform: "translateX(-50%)",
+            zIndex: 200,
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            className="learn-rating-dock-dot"
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 9999,
+              ...ratingSwipeDockDotStyle(ratingDockQ),
+            }}
+          />
+        </div>
+      )}
       {!focusMode && (
         <div style={{ marginBottom: "1rem" }}>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
