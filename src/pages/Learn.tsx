@@ -431,6 +431,13 @@ export default function Learn() {
                 minHeight: focusMode ? undefined : 220,
                 cursor: method === "flash" && mode === "front" ? "pointer" : "default",
                 marginBottom: focusMode ? 0 : "1.25rem",
+                ...(method === "flash" && mode === "reveal"
+                  ? ({
+                      WebkitUserSelect: "none",
+                      userSelect: "none",
+                      touchAction: "manipulation",
+                    } satisfies CSSProperties)
+                  : {}),
               }}
             >
               {currentMeta && !focusMode && (

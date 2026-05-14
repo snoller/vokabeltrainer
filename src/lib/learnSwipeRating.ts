@@ -1,7 +1,7 @@
 import type { ReviewQuality } from "@/lib/srs";
 
 /** Mindestfingerweg (Pixel), damit keine Klicks wie Wischen gewertet werden */
-export const LEARN_SWIPE_MIN_PX = 70;
+export const LEARN_SWIPE_MIN_PX = 52;
 
 /** Wenn sich die scrollbare Fläche stärker bewegt, war es sehr wahrscheinlich Scroll — kein Rating */
 export const LEARN_SCROLL_SUPPRESS_PIXELS = 20;

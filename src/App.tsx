@@ -8,6 +8,7 @@ import Stats from "@/pages/Stats";
 
 import ProfileUnlockGate from "@/components/ProfileUnlockGate";
 import ProfileHeaderSelect from "@/components/ProfileHeaderSelect";
+import { appVersionFootnote } from "@/lib/appMeta";
 
 function Layout() {
   const loc = useLocation();
@@ -84,6 +85,21 @@ function Layout() {
       <main style={{ flex: 1, padding: "1.25rem clamp(1rem, 4vw, 2.5rem) 2.5rem", maxWidth: 960, margin: "0 auto", width: "100%" }}>
         <Outlet />
       </main>
+      <footer
+        style={{
+          padding: "0.35rem 1rem calc(0.35rem + env(safe-area-inset-bottom))",
+          marginTop: "auto",
+          textAlign: "center",
+          fontSize: "0.72rem",
+          color: "var(--ink-muted)",
+          opacity: 0.52,
+          letterSpacing: "0.02em",
+          userSelect: "none",
+        }}
+        aria-label="App-Version"
+      >
+        {appVersionFootnote()}
+      </footer>
       <ProfileUnlockGate />
     </div>
   );
