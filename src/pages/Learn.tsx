@@ -57,6 +57,15 @@ function pickDueQueue(cards: VocabularyCard[], now: number): VocabularyCard[] {
   return due;
 }
 
+/** Anzeige für den Übungs-Horizont (nur Schlange, SRS bleibt bei echter Zeit) */
+function formatLearnHorizon(ms: number): string {
+  if (ms <= 0) return "";
+  const h = Math.round(ms / (3600 * 1000));
+  if (h < 72) return `${h} Std.`;
+  const d = Math.round(h / 24);
+  return `${d} T.`;
+}
+
 type CardSwipeUi =
   | { kind: "idle" }
   | { kind: "drag"; tx: number; ty: number; rot: number; rdx: number; rdy: number }
@@ -66,6 +75,9 @@ export default function Learn() {
   const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
   const cards = useMemo(() => parseCardsSnapshot(raw), [raw]);
   const [now, setNow] = useState(() => Date.now());
+  /** Nur für die Warteschlange: virtuell in die Zukunft schauen (Bewertung = echte Zeit). */
+  const [learnHorizonMs, setLearnHorizonMs] = useState(0);
+  const learningNow = now + learnHorizonMs;
   const [mode, setMode] = useState<"reveal" | "front">("front");
   const [method, setMethod] = useState<"flash" | "type">("flash");
   const [typed, setTyped] = useState("");
@@ -87,7 +99,7 @@ export default function Learn() {
     };
   }, []);
 
-  const queue = useMemo(() => pickDueQueue(cards, now), [cards, now]);
+  const queue = useMemo(() => pickDueQueue(cards, learningNow), [cards, learningNow]);
   const current = queue[0];
 
   /** Niederschwellige Motivation: keine Streaks, nur diese Einheit + Gesamtzähler (s. learnMotivation) */
@@ -386,22 +398,72 @@ export default function Learn() {
         <p style={{ color: "var(--ink-muted)", maxWidth: "48ch" }}>
           Alles erledigt für den Moment. Komm später wieder – die nächsten Wiederholungen sind zeitgestaffelt.
         </p>
-        <button
-          type="button"
-          onClick={() => setNow(Date.now())}
+        {learnHorizonMs > 0 && (
+          <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem", maxWidth: "48ch", marginTop: "0.75rem" }}>
+            Übungs-Horizont: +{formatLearnHorizon(learnHorizonMs)} — Karten erscheinen in dieser Ansicht früher;
+            Bewertungen nutzen weiterhin die echte Uhrzeit.
+          </p>
+        )}
+        <div
           style={{
             marginTop: "1rem",
-            padding: "0.65rem 1.2rem",
-            borderRadius: 999,
-            border: "1px solid rgba(232, 234, 239, 0.2)",
-            background: "var(--bg-raised)",
-            color: "var(--ink)",
-            cursor: "pointer",
-            fontWeight: 600,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.65rem",
+            alignItems: "center",
           }}
         >
-          Erneut prüfen
-        </button>
+          <button
+            type="button"
+            onClick={() => setNow(Date.now())}
+            style={{
+              padding: "0.65rem 1.2rem",
+              borderRadius: 999,
+              border: "1px solid rgba(232, 234, 239, 0.2)",
+              background: "var(--bg-raised)",
+              color: "var(--ink)",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Erneut prüfen
+          </button>
+          <button
+            type="button"
+            onClick={() => setLearnHorizonMs((h) => h + 24 * 60 * 60 * 1000)}
+            style={{
+              padding: "0.65rem 1.2rem",
+              borderRadius: 999,
+              border: "1px solid rgba(201, 162, 39, 0.4)",
+              background: "rgba(201, 162, 39, 0.1)",
+              color: "var(--accent)",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Noch eine Runde (+24 h im Übungs-Horizont)
+          </button>
+          {learnHorizonMs > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setLearnHorizonMs(0);
+                setNow(Date.now());
+              }}
+              style={{
+                padding: "0.65rem 1.2rem",
+                borderRadius: 999,
+                border: "1px solid rgba(232, 234, 239, 0.2)",
+                background: "transparent",
+                color: "var(--ink-muted)",
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Horizont zurücksetzen
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -731,15 +793,38 @@ export default function Learn() {
       )}
 
       {!focusMode && (
-        <p style={{ color: "var(--ink-muted)", marginTop: 0, fontSize: "0.95rem" }}>
-          {sessionReviewCount > 0 && (
-            <>
-              Schon <strong>{sessionReviewCount}</strong>{" "}
-              {sessionReviewCount === 1 ? "Bewertung" : "Bewertungen"} in dieser Einheit ·{" "}
-            </>
+        <div style={{ marginBottom: "0.25rem" }}>
+          <p style={{ color: "var(--ink-muted)", marginTop: 0, marginBottom: "0.35rem", fontSize: "0.95rem" }}>
+            {sessionReviewCount > 0 && (
+              <>
+                Schon <strong>{sessionReviewCount}</strong>{" "}
+                {sessionReviewCount === 1 ? "Bewertung" : "Bewertungen"} in dieser Einheit ·{" "}
+              </>
+            )}
+            Noch <strong>{queue.length}</strong> fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
+          </p>
+          {learnHorizonMs > 0 && (
+            <p style={{ color: "var(--ink-muted)", margin: 0, fontSize: "0.82rem" }}>
+              Übungs-Horizont +{formatLearnHorizon(learnHorizonMs)} (nur Anzeige) ·{" "}
+              <button
+                type="button"
+                onClick={() => setLearnHorizonMs(0)}
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  color: "var(--accent)",
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontWeight: 600,
+                  textDecoration: "underline",
+                }}
+              >
+                zurücksetzen
+              </button>
+            </p>
           )}
-          Noch <strong>{queue.length}</strong> fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
-        </p>
+        </div>
       )}
 
       <div style={innerColStyle}>
