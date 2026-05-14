@@ -52,7 +52,7 @@ export function swipeDragHintIntensity(dx: number, dy: number): number {
   return Math.min(1, 0.6 + Math.min(1, over / 72) * 0.4);
 }
 
-/** Eck-Tönung beim Ziehen — dieselbe Ampel wie `ratingFlashOverlay`, mit Wisch-Stärke. */
+/** Eck-Tönung beim Ziehen — kräftiger als der Loslass-Flash, da Text darunter liegt. */
 export function ratingSwipeDragOverlay(quality: ReviewQuality, intensity: number): {
   background: string;
   boxShadow: string;
@@ -61,11 +61,12 @@ export function ratingSwipeDragOverlay(quality: ReviewQuality, intensity: number
   const { angle, fill, rim } = ampelOverlay(quality);
   const [fr, fg, fb] = fill;
   const [rr, rg, rb] = rim;
-  const gA = 0.065 + 0.22 * t;
-  const eA = 0.26 + 0.36 * t;
+  const g0 = 0.1 + 0.4 * t;
+  const g1 = 0.05 + 0.16 * t;
+  const eA = 0.34 + 0.38 * t;
   return {
-    background: `linear-gradient(${angle}deg, rgba(${fr},${fg},${fb},${gA}) 0%, transparent 58%)`,
-    boxShadow: `inset 0 0 0 1px rgba(${rr},${rg},${rb},${eA})`,
+    background: `linear-gradient(${angle}deg, rgba(${fr},${fg},${fb},${g0}) 0%, rgba(${fr},${fg},${fb},${g1}) 44%, transparent 70%)`,
+    boxShadow: `inset 0 0 0 2px rgba(${rr},${rg},${rb},${eA})`,
   };
 }
 

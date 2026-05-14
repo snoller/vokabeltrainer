@@ -287,7 +287,7 @@ export default function Learn() {
       if (cardSwipe.kind === "fly") return;
       const rdx = e.clientX - s.x0;
       const rdy = e.clientY - s.y0;
-      if (Math.hypot(rdx, rdy) < 14) return;
+      if (Math.hypot(rdx, rdy) < 10) return;
       const cap = (n: number) => Math.sign(n) * Math.min(Math.abs(n), 62);
       setCardSwipe({
         kind: "drag",
@@ -774,7 +774,6 @@ export default function Learn() {
                 }}
                 style={{
                   position: "relative",
-                  isolation: flashReveal ? "isolate" : undefined,
                   ...(focusMode
                     ? {
                         width: "100%",
@@ -795,36 +794,7 @@ export default function Learn() {
                   ...cardMotionStyle,
                 }}
               >
-              {flashReveal && swipeDragHintOverlayStyle && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: flashcardSwipeRadiusPx,
-                    pointerEvents: "none",
-                    zIndex: 3,
-                    opacity: Math.min(0.88, 0.38 + swipeDragHintInten * 0.45),
-                    transition: "opacity 0.07s ease",
-                    ...swipeDragHintOverlayStyle,
-                  }}
-                />
-              )}
-              {flashReveal && glowOverlay && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: flashcardSwipeRadiusPx,
-                    pointerEvents: "none",
-                    zIndex: 4,
-                    opacity: 0.62,
-                    transition: "opacity 0.14s ease",
-                    ...glowOverlay,
-                  }}
-                />
-              )}
+              <div style={{ position: "relative", zIndex: 1 }}>
               {currentMeta && !focusMode && (
                 <div className="learn-fc-meta" style={{ fontSize: "0.85rem", marginBottom: "0.55rem" }}>
                   {currentMeta}
@@ -994,6 +964,40 @@ export default function Learn() {
                     )}
                   </div>
                 </div>
+              )}
+              </div>
+              {flashReveal && swipeDragHintOverlayStyle && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: flashcardSwipeRadiusPx,
+                    pointerEvents: "none",
+                    zIndex: 50,
+                    opacity: Math.min(0.97, 0.42 + swipeDragHintInten * 0.48),
+                    transition: "opacity 0.08s linear",
+                    mixBlendMode: cardLook === "paper" ? "multiply" : "normal",
+                    transform: "translateZ(0)",
+                    ...swipeDragHintOverlayStyle,
+                  }}
+                />
+              )}
+              {flashReveal && glowOverlay && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: flashcardSwipeRadiusPx,
+                    pointerEvents: "none",
+                    zIndex: 51,
+                    opacity: 0.62,
+                    transition: "opacity 0.14s ease",
+                    transform: "translateZ(0)",
+                    ...glowOverlay,
+                  }}
+                />
               )}
             </div>
             </div>

@@ -6,7 +6,7 @@ export const LEARN_SWIPE_MIN_PX = 52;
 /**
  * Unterhalb davon keine Ampeltönung beim Ziehen; darüber schon Hinweisfarben (bewerten tut die App weiter erst ab {@link LEARN_SWIPE_MIN_PX}).
  */
-export const LEARN_SWIPE_TINT_HINT_MIN_PX = 26;
+export const LEARN_SWIPE_TINT_HINT_MIN_PX = 20;
 
 /** Wenn sich die scrollbare Fläche stärker bewegt, war es sehr wahrscheinlich Scroll — kein Rating */
 export const LEARN_SCROLL_SUPPRESS_PIXELS = 20;
