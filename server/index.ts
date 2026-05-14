@@ -300,6 +300,20 @@ app.post(
   }
 );
 
+app.get("/", (_req, res) => {
+  res.type("text/plain; charset=utf-8").send(
+    [
+      "Vokabeltrainer — API-Server (nur /api/*).",
+      "",
+      "- GET /api/health — Status prüfen",
+      "- POST /api/extract-vocabulary — Foto-Scan (Multipart, Feld „image“)",
+      "",
+      "Die Oberfläche: npm run dev:client oder npm run dev → http://127.0.0.1:5173/ oder http://localhost:5173/",
+      "",
+    ].join("\n")
+  );
+});
+
 app.get("/api/health", (_req, res) => {
   res.json({
     ok: true,

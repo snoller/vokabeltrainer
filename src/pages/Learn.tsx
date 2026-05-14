@@ -202,6 +202,7 @@ export default function Learn() {
     };
   }, [clearFlyCommitTimer, clearTapTimer]);
 
+  const flyLeaveQ: ReviewQuality | null =
     cardSwipe.kind === "fly" && cardSwipe.phase === "leave" ? cardSwipe.q : null;
 
   useEffect(() => {

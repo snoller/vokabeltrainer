@@ -26,6 +26,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    /** Auf macOS kann Vite nur auf ::1 lauschen → 127.0.0.1 wäre „nicht erreichbar“. true = IPv4+LAN. */
+    host: true,
+    strictPort: true,
     proxy: {
       "/api": { target: "http://127.0.0.1:8787", changeOrigin: true },
     },
