@@ -10,7 +10,18 @@ import {
 } from "react";
 import type { VocabularyCard } from "@/types";
 import { formatCardMetaLine } from "@/lib/cardMeta";
-import { LEARN_SCROLL_SUPPRESS_PIXELS, qualityFromSwipeVector } from "@/lib/learnSwipeRating";
+import {
+  LEARN_SCROLL_SUPPRESS_PIXELS,
+  LEARN_SWIPE_MIN_PX,
+  qualityFromSwipeVector,
+} from "@/lib/learnSwipeRating";
+import { playLearnRatingBlip } from "@/lib/learnRatingSound";
+import {
+  getLearnRatingSound,
+  setLearnRatingSound,
+  subscribeLearnRatingSound,
+} from "@/lib/learnRatingSoundPref";
+import { LEARN_CARD_FLY_MS, ratingFlashOverlay } from "@/lib/learnRatingVisual";
 import {
   LEARN_FLASHCARD_STORAGE_KEY,
   getLearnFlashcardAppearance,
@@ -41,6 +52,11 @@ function pickDueQueue(cards: VocabularyCard[], now: number): VocabularyCard[] {
   due.sort((a, b) => a.srs.dueAt - b.srs.dueAt);
   return due;
 }
+
+type CardSwipeUi =
+  | { kind: "idle" }
+  | { kind: "drag"; tx: number; ty: number; rot: number }
+  | { kind: "fly"; q: ReviewQuality; ux: number; uy: number; phase: "start" | "leave" };
 
 export default function Learn() {
   const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
@@ -91,7 +107,33 @@ export default function Learn() {
     };
   }, [focusMode]);
 
-  const updateCurrent = useCallback(
+  const ratingSoundOn = useSyncExternalStore(
+    subscribeLearnRatingSound,
+    getLearnRatingSound,
+    getLearnRatingSound
+  );
+
+  const flyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [cardSwipe, setCardSwipe] = useState<CardSwipeUi>({ kind: "idle" });
+  const [tapGlow, setTapGlow] = useState<ReviewQuality | null>(null);
+
+  const clearFlyCommitTimer = useCallback(() => {
+    if (flyCommitTimerRef.current != null) {
+      window.clearTimeout(flyCommitTimerRef.current);
+      flyCommitTimerRef.current = null;
+    }
+  }, []);
+
+  const clearTapTimer = useCallback(() => {
+    if (tapFeedbackTimerRef.current != null) {
+      window.clearTimeout(tapFeedbackTimerRef.current);
+      tapFeedbackTimerRef.current = null;
+    }
+  }, []);
+
+  const persistRating = useCallback(
     (quality: ReviewQuality) => {
       if (!current) return;
       const nextSrs = scheduleNext(current.srs, quality, Date.now());
@@ -105,7 +147,42 @@ export default function Learn() {
     [cards, current]
   );
 
-  /** Rückseite zeigen · Wischen ohne Scroll-Fehltrigger (siehe learnSwipeRating) */
+  const persistRatingRef = useRef(persistRating);
+  persistRatingRef.current = persistRating;
+
+  const resetLearnMotion = useCallback(() => {
+    setCardSwipe({ kind: "idle" });
+    setTapGlow(null);
+    clearFlyCommitTimer();
+    clearTapTimer();
+  }, [clearFlyCommitTimer, clearTapTimer]);
+
+  /** Eintippen & direkte Aufrufe */
+  const updateCurrent = useCallback(
+    (quality: ReviewQuality) => {
+      resetLearnMotion();
+      persistRating(quality);
+    },
+    [persistRating, resetLearnMotion]
+  );
+
+  const rateFromButton = useCallback(
+    (quality: ReviewQuality) => {
+      if (cardSwipe.kind === "fly") return;
+      clearTapTimer();
+      if (ratingSoundOn) playLearnRatingBlip(quality);
+      setTapGlow(quality);
+      tapFeedbackTimerRef.current = window.setTimeout(() => {
+        tapFeedbackTimerRef.current = null;
+        setTapGlow(null);
+        setCardSwipe({ kind: "idle" });
+        persistRatingRef.current(quality);
+      }, 110);
+    },
+    [cardSwipe.kind, clearTapTimer, ratingSoundOn]
+  );
+
+  /** Rückseite · Wisch-Tracking */
   const revealSwipeRef = useRef<{
     pointerId: number | null;
     x0: number;
@@ -115,11 +192,32 @@ export default function Learn() {
 
   useEffect(() => {
     revealSwipeRef.current.pointerId = null;
-  }, [mode, current?.id]);
+    resetLearnMotion();
+  }, [mode, current?.id, resetLearnMotion]);
+
+  useEffect(() => {
+    return () => {
+      clearFlyCommitTimer();
+      clearTapTimer();
+    };
+  }, [clearFlyCommitTimer, clearTapTimer]);
+
+    cardSwipe.kind === "fly" && cardSwipe.phase === "leave" ? cardSwipe.q : null;
+
+  useEffect(() => {
+    if (flyLeaveQ == null) return;
+    clearFlyCommitTimer();
+    flyCommitTimerRef.current = window.setTimeout(() => {
+      flyCommitTimerRef.current = null;
+      setCardSwipe({ kind: "idle" });
+      persistRatingRef.current(flyLeaveQ);
+    }, LEARN_CARD_FLY_MS);
+    return clearFlyCommitTimer;
+  }, [flyLeaveQ, clearFlyCommitTimer]);
 
   const onRevealPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (method !== "flash" || mode !== "reveal") return;
+      if (cardSwipe.kind === "fly" || method !== "flash" || mode !== "reveal") return;
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
       } catch {
@@ -132,7 +230,27 @@ export default function Learn() {
         scrollTop0: e.currentTarget.scrollTop,
       };
     },
-    [method, mode]
+    [cardSwipe.kind, method, mode]
+  );
+
+  const onRevealPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const s = revealSwipeRef.current;
+      if (s.pointerId == null || s.pointerId !== e.pointerId || method !== "flash" || mode !== "reveal")
+        return;
+      if (cardSwipe.kind === "fly") return;
+      const rdx = e.clientX - s.x0;
+      const rdy = e.clientY - s.y0;
+      if (Math.hypot(rdx, rdy) < 14) return;
+      const cap = (n: number) => Math.sign(n) * Math.min(Math.abs(n), 62);
+      setCardSwipe({
+        kind: "drag",
+        tx: cap(rdx * 0.28),
+        ty: cap(rdy * 0.28),
+        rot: Math.max(-7, Math.min(7, rdx * 0.05)),
+      });
+    },
+    [cardSwipe.kind, method, mode]
   );
 
   const finalizeRevealSwipe = useCallback(
@@ -142,12 +260,40 @@ export default function Learn() {
       revealSwipeRef.current = { pointerId: null, x0: 0, y0: 0, scrollTop0: 0 };
 
       const scrollMoved = Math.abs(e.currentTarget.scrollTop - s.scrollTop0);
-      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS) return;
+      const dx = e.clientX - s.x0;
+      const dy = e.clientY - s.y0;
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+      const clearDrag = () => setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
 
-      const q = qualityFromSwipeVector(e.clientX - s.x0, e.clientY - s.y0);
-      if (q) updateCurrent(q);
+      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS) {
+        clearDrag();
+        return;
+      }
+      if (ax < LEARN_SWIPE_MIN_PX && ay < LEARN_SWIPE_MIN_PX) {
+        clearDrag();
+        return;
+      }
+
+      const q = qualityFromSwipeVector(dx, dy);
+      if (!q) {
+        clearDrag();
+        return;
+      }
+      if (ratingSoundOn) playLearnRatingBlip(q);
+      const mag = Math.hypot(dx, dy) || 1;
+      const ux = dx / mag;
+      const uy = dy / mag;
+      setCardSwipe({ kind: "fly", q, ux, uy, phase: "start" });
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setCardSwipe((prev) =>
+            prev.kind === "fly" && prev.phase === "start" ? { ...prev, phase: "leave" } : prev
+          );
+        });
+      });
     },
-    [updateCurrent]
+    [ratingSoundOn]
   );
 
   const onRevealPointerUp = useCallback(
@@ -159,6 +305,7 @@ export default function Learn() {
 
   const onRevealPointerCancel = useCallback(() => {
     revealSwipeRef.current.pointerId = null;
+    setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
   }, []);
 
   const checkTyped = useCallback(() => {
@@ -212,6 +359,7 @@ export default function Learn() {
   }
 
   const currentMeta = formatCardMetaLine(current);
+  const flashReveal = method === "flash" && mode === "reveal";
 
   const shellStyle: CSSProperties = focusMode
     ? {
@@ -263,7 +411,7 @@ export default function Learn() {
         justifyContent: "center",
         padding:
           "max(3rem, calc(env(safe-area-inset-top) + 1.85rem)) 0.75rem max(0.75rem, env(safe-area-inset-bottom))",
-        overflow: "hidden",
+        overflow: flashReveal ? "visible" : "hidden",
       }
     : {};
 
@@ -276,7 +424,7 @@ export default function Learn() {
         display: "flex",
         alignItems: "stretch",
         justifyContent: "center",
-        overflow: "hidden",
+        overflow: flashReveal ? "visible" : "hidden",
         maxHeight: "calc(100% - 1px)",
       }
     : {};
@@ -289,6 +437,49 @@ export default function Learn() {
         display: "flex",
         flexDirection: "column",
         alignItems: "stretch",
+      }
+    : {};
+
+  const vw = typeof window !== "undefined" ? window.innerWidth : 420;
+  const travelLeavePx = Math.min(vw * 0.38, 280);
+  const travelStartPx = 52;
+
+  let cardTx = 0;
+  let cardTy = 0;
+  let cardRot = 0;
+  let cardScale = 1;
+  let cardOpacity = 1;
+  let cardTransit: CSSProperties["transition"];
+
+  if (cardSwipe.kind === "drag") {
+    cardTx = cardSwipe.tx;
+    cardTy = cardSwipe.ty;
+    cardRot = cardSwipe.rot;
+  } else if (cardSwipe.kind === "fly") {
+    const d = cardSwipe.phase === "start" ? travelStartPx : travelLeavePx;
+    cardTx = cardSwipe.ux * d;
+    cardTy = cardSwipe.uy * d;
+    cardRot = cardSwipe.ux * 12 + cardSwipe.uy * -3;
+    if (cardSwipe.phase === "leave") {
+      cardScale = 0.82;
+      cardOpacity = 0;
+      cardTransit = `transform ${LEARN_CARD_FLY_MS}ms cubic-bezier(0.34, 1.12, 0.45, 1), opacity ${Math.max(80, LEARN_CARD_FLY_MS - 36)}ms ease-out`;
+    } else {
+      cardTransit = "none";
+    }
+  }
+
+  const glowQ: ReviewQuality | null = tapGlow ?? (cardSwipe.kind === "fly" ? cardSwipe.q : null);
+  const glowOverlay = glowQ ? ratingFlashOverlay(glowQ) : null;
+
+  const cardMotionStyle: CSSProperties = flashReveal
+    ? {
+        transform: `translate3d(${cardTx}px, ${cardTy}px, 0) rotate(${cardRot}deg) scale(${cardScale})`,
+        opacity: cardOpacity,
+        transition: cardTransit,
+        willChange:
+          cardSwipe.kind === "fly" && cardSwipe.phase === "leave" ? "transform, opacity" : undefined,
+        pointerEvents: cardSwipe.kind === "fly" ? "none" : "auto",
       }
     : {};
 
@@ -405,41 +596,69 @@ export default function Learn() {
         <div style={cardStageStyle}>
           <div style={cardBoxStyle}>
             <div
-              className={`learn-flashcard learn-flashcard--${cardLook}`}
-              role="button"
-              tabIndex={0}
-              onPointerDown={onRevealPointerDown}
-              onPointerUp={onRevealPointerUp}
-              onPointerCancel={onRevealPointerCancel}
-              onLostPointerCapture={onRevealPointerCancel}
-              onClick={() => method === "flash" && setMode((m) => (m === "front" ? "reveal" : m))}
-              onKeyDown={(e) => {
-                if (method === "flash" && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  setMode((m) => (m === "front" ? "reveal" : m));
-                }
-              }}
               style={{
-                ...(focusMode
-                  ? {
-                      width: "100%",
-                      maxHeight: "min(72dvh, calc(100dvh - 14rem))",
-                      overflowY: "auto",
-                      WebkitOverflowScrolling: "touch",
-                    }
-                  : {}),
-                minHeight: focusMode ? undefined : 220,
-                cursor: method === "flash" && mode === "front" ? "pointer" : "default",
+                position: "relative",
+                width: "100%",
                 marginBottom: focusMode ? 0 : "1.25rem",
-                ...(method === "flash" && mode === "reveal"
-                  ? ({
-                      WebkitUserSelect: "none",
-                      userSelect: "none",
-                      touchAction: "manipulation",
-                    } satisfies CSSProperties)
-                  : {}),
               }}
             >
+              {flashReveal && glowOverlay && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: 14,
+                    pointerEvents: "none",
+                    zIndex: 3,
+                    opacity: 0.62,
+                    transition: "opacity 0.14s ease",
+                    ...glowOverlay,
+                  }}
+                />
+              )}
+              <div
+                className={`learn-flashcard learn-flashcard--${cardLook}`}
+                role="button"
+                tabIndex={0}
+                onPointerDown={(e) => {
+                  setCardSwipe({ kind: "idle" });
+                  onRevealPointerDown(e);
+                }}
+                onPointerMove={onRevealPointerMove}
+                onPointerUp={onRevealPointerUp}
+                onPointerCancel={onRevealPointerCancel}
+                onLostPointerCapture={onRevealPointerCancel}
+                onClick={() => method === "flash" && setMode((m) => (m === "front" ? "reveal" : m))}
+                onKeyDown={(e) => {
+                  if (method === "flash" && (e.key === "Enter" || e.key === " ")) {
+                    e.preventDefault();
+                    setMode((m) => (m === "front" ? "reveal" : m));
+                  }
+                }}
+                style={{
+                  position: "relative",
+                  zIndex: 2,
+                  ...(focusMode
+                    ? {
+                        width: "100%",
+                        maxHeight: "min(72dvh, calc(100dvh - 14rem))",
+                        overflowY: "auto",
+                        WebkitOverflowScrolling: "touch",
+                      }
+                    : {}),
+                  minHeight: focusMode ? undefined : 220,
+                  cursor: method === "flash" && mode === "front" ? "pointer" : "default",
+                  ...(method === "flash" && mode === "reveal"
+                    ? ({
+                        WebkitUserSelect: "none",
+                        userSelect: "none",
+                        touchAction: "manipulation",
+                      } satisfies CSSProperties)
+                    : {}),
+                  ...cardMotionStyle,
+                }}
+              >
               {currentMeta && !focusMode && (
                 <div className="learn-fc-meta" style={{ fontSize: "0.85rem", marginBottom: "0.55rem" }}>
                   {currentMeta}
@@ -611,6 +830,7 @@ export default function Learn() {
                 </div>
               )}
             </div>
+            </div>
           </div>
         </div>
 
@@ -645,6 +865,27 @@ export default function Learn() {
               Touch am Kartenbereich:&nbsp;rechts · <strong>einfach</strong>, links&nbsp;· <strong>gar&nbsp;nicht</strong>, nach
               oben&nbsp;· <strong>gut</strong>, nach unten&nbsp;· <strong>schlecht</strong>
             </p>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.45rem",
+                margin: "0 0 0.75rem",
+                fontSize: "0.8rem",
+                color: "var(--ink-muted)",
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={ratingSoundOn}
+                onChange={(e) => setLearnRatingSound(e.target.checked)}
+                style={{ width: "0.95rem", height: "0.95rem", flexShrink: 0 }}
+              />
+              <span>Ton bei Bewertung (Kurzsignal)</span>
+            </label>
             <div
               style={{
                 display: "flex",
@@ -653,10 +894,34 @@ export default function Learn() {
                 width: "100%",
               }}
             >
-              <RatingButton compact={focusMode} label="gar nicht" tone="danger" onClick={() => updateCurrent("again")} />
-              <RatingButton compact={focusMode} label="schlecht" tone="muted" onClick={() => updateCurrent("hard")} />
-              <RatingButton compact={focusMode} label="gut" tone="accent" onClick={() => updateCurrent("good")} />
-              <RatingButton compact={focusMode} label="einfach" tone="good" onClick={() => updateCurrent("easy")} />
+              <RatingButton
+                compact={focusMode}
+                label="gar nicht"
+                tone="danger"
+                disabled={cardSwipe.kind === "fly"}
+                onClick={() => rateFromButton("again")}
+              />
+              <RatingButton
+                compact={focusMode}
+                label="schlecht"
+                tone="muted"
+                disabled={cardSwipe.kind === "fly"}
+                onClick={() => rateFromButton("hard")}
+              />
+              <RatingButton
+                compact={focusMode}
+                label="gut"
+                tone="accent"
+                disabled={cardSwipe.kind === "fly"}
+                onClick={() => rateFromButton("good")}
+              />
+              <RatingButton
+                compact={focusMode}
+                label="einfach"
+                tone="good"
+                disabled={cardSwipe.kind === "fly"}
+                onClick={() => rateFromButton("easy")}
+              />
             </div>
           </div>
         )}
@@ -671,11 +936,13 @@ function RatingButton({
   tone,
   onClick,
   compact,
+  disabled,
 }: {
   label: string;
   tone: "danger" | "muted" | "accent" | "good";
   onClick: () => void;
   compact?: boolean;
+  disabled?: boolean;
 }) {
   const border =
     tone === "danger"
@@ -697,6 +964,7 @@ function RatingButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       style={{
@@ -705,14 +973,15 @@ function RatingButton({
         padding: compact ? "0.55rem 0.25rem" : "0.7rem 0.4rem",
         borderRadius: 12,
         border: `1px solid ${border}`,
-        background: "var(--bg-raised)",
-        color: toneColor,
-        cursor: "pointer",
+        background: disabled ? "var(--bg-deep)" : "var(--bg-raised)",
+        color: disabled ? "var(--ink-muted)" : toneColor,
+        cursor: disabled ? "not-allowed" : "pointer",
         textAlign: "center",
         fontWeight: 600,
         fontSize: compact ? "clamp(0.7rem, 2.6vw, 0.85rem)" : "clamp(0.78rem, 2.4vw, 0.95rem)",
         lineHeight: 1.2,
         fontFamily: "var(--font-ui)",
+        opacity: disabled ? 0.55 : 1,
       }}
     >
       {label}
