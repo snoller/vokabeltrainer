@@ -11,19 +11,18 @@ import {
 } from "react";
 import type { VocabularyCard } from "@/types";
 import { formatCardMetaLine } from "@/lib/cardMeta";
-import {
-  LEARN_SCROLL_SUPPRESS_PIXELS,
-  LEARN_SWIPE_MIN_PX,
-  qualityFromSwipeVector,
-  qualityHintFromSwipeWhileDragging,
-} from "@/lib/learnSwipeRating";
+import { LEARN_SCROLL_SUPPRESS_PIXELS, LEARN_SWIPE_MIN_PX, qualityFromSwipeVector } from "@/lib/learnSwipeRating";
 import { playLearnRatingBlip } from "@/lib/learnRatingSound";
 import {
   getLearnRatingSound,
   setLearnRatingSound,
   subscribeLearnRatingSound,
 } from "@/lib/learnRatingSoundPref";
-import { LEARN_CARD_FLY_MS, ratingFlashOverlay, ratingSwipeDragOverlay, swipeDragHintIntensity } from "@/lib/learnRatingVisual";
+import {
+  LEARN_CARD_FLY_MS,
+  ratingLearnConfirmBackdrop,
+  ratingTapConfirmOutline,
+} from "@/lib/learnRatingVisual";
 import {
   LEARN_FLASHCARD_STORAGE_KEY,
   getLearnFlashcardAppearance,
@@ -57,6 +56,15 @@ function pickDueQueue(cards: VocabularyCard[], now: number): VocabularyCard[] {
   return due;
 }
 
+/** Anzeige für Übungs-Horizont (+Karten früher in der Liste, ohne SRS-Zeit zu verfälschen) */
+function formatLearnHorizon(ms: number): string {
+  if (ms <= 0) return "";
+  const h = Math.round(ms / (3600 * 1000));
+  if (h < 72) return `${h} Std.`;
+  const d = Math.round(h / 24);
+  return `${d} T.`;
+}
+
 type CardSwipeUi =
   | { kind: "idle" }
   | { kind: "drag"; tx: number; ty: number; rot: number; rdx: number; rdy: number }
@@ -66,6 +74,9 @@ export default function Learn() {
   const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
   const cards = useMemo(() => parseCardsSnapshot(raw), [raw]);
   const [now, setNow] = useState(() => Date.now());
+  /** Nur Warteschlange: virtuell in die Zukunft schauen, um weitere Karten zu üben (Bewertung = echte Zeit). */
+  const [learnHorizonMs, setLearnHorizonMs] = useState(0);
+  const learningNow = now + learnHorizonMs;
   const [mode, setMode] = useState<"reveal" | "front">("front");
   const [method, setMethod] = useState<"flash" | "type">("flash");
   const [typed, setTyped] = useState("");
@@ -87,7 +98,7 @@ export default function Learn() {
     };
   }, []);
 
-  const queue = useMemo(() => pickDueQueue(cards, now), [cards, now]);
+  const queue = useMemo(() => pickDueQueue(cards, learningNow), [cards, learningNow]);
   const current = queue[0];
 
   /** Niederschwellige Motivation: keine Streaks, nur diese Einheit + Gesamtzähler (s. learnMotivation) */
@@ -386,11 +397,25 @@ export default function Learn() {
         <p style={{ color: "var(--ink-muted)", maxWidth: "48ch" }}>
           Alles erledigt für den Moment. Komm später wieder – die nächsten Wiederholungen sind zeitgestaffelt.
         </p>
+        {learnHorizonMs > 0 && (
+          <p style={{ color: "var(--ink-muted)", fontSize: "0.9rem", maxWidth: "48ch", marginTop: "0.75rem" }}>
+            Übungs-Horizont: +{formatLearnHorizon(learnHorizonMs)} — Karten werden in dieser Ansicht früher angezeigt;
+            Bewertungen nutzen weiterhin die echte Uhrzeit.
+          </p>
+        )}
+        <div
+          style={{
+            marginTop: "1rem",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.65rem",
+            alignItems: "center",
+          }}
+        >
         <button
           type="button"
           onClick={() => setNow(Date.now())}
           style={{
-            marginTop: "1rem",
             padding: "0.65rem 1.2rem",
             borderRadius: 999,
             border: "1px solid rgba(232, 234, 239, 0.2)",
@@ -402,6 +427,42 @@ export default function Learn() {
         >
           Erneut prüfen
         </button>
+        <button
+          type="button"
+          onClick={() => setLearnHorizonMs((h) => h + 24 * 60 * 60 * 1000)}
+          style={{
+            padding: "0.65rem 1.2rem",
+            borderRadius: 999,
+            border: "1px solid rgba(201, 162, 39, 0.4)",
+            background: "rgba(201, 162, 39, 0.1)",
+            color: "var(--accent)",
+            cursor: "pointer",
+            fontWeight: 600,
+          }}
+        >
+          Noch eine Runde (+24 h im Übungs-Horizont)
+        </button>
+        {learnHorizonMs > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setLearnHorizonMs(0);
+              setNow(Date.now());
+            }}
+            style={{
+              padding: "0.65rem 1.2rem",
+              borderRadius: 999,
+              border: "1px solid rgba(232, 234, 239, 0.2)",
+              background: "transparent",
+              color: "var(--ink-muted)",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Horizont zurücksetzen
+          </button>
+        )}
+        </div>
       </div>
     );
   }
@@ -517,17 +578,13 @@ export default function Learn() {
     }
   }
 
-  const glowQ: ReviewQuality | null = tapGlow ?? (cardSwipe.kind === "fly" ? cardSwipe.q : null);
-  const glowOverlay = glowQ ? ratingFlashOverlay(glowQ) : null;
+  const flyConfirmQ = flashReveal && cardSwipe.kind === "fly" ? cardSwipe.q : null;
+  const confirmBackdrop = flyConfirmQ != null ? ratingLearnConfirmBackdrop(flyConfirmQ) : null;
+  const backdropOpacity =
+    flyConfirmQ != null ? (cardSwipe.kind === "fly" && cardSwipe.phase === "leave" ? 0.94 : 0.36) : 0;
 
-  const swipeDragHintQ =
-    flashReveal && cardSwipe.kind === "drag"
-      ? qualityHintFromSwipeWhileDragging(cardSwipe.rdx, cardSwipe.rdy)
-      : null;
-  const swipeDragHintInten =
-    swipeDragHintQ != null ? swipeDragHintIntensity(cardSwipe.rdx, cardSwipe.rdy) : 0;
-  const swipeDragHintOverlayStyle =
-    swipeDragHintQ != null ? ratingSwipeDragOverlay(swipeDragHintQ, swipeDragHintInten) : null;
+  const tapOutline =
+    flashReveal && tapGlow != null && cardSwipe.kind !== "fly" ? ratingTapConfirmOutline(tapGlow) : null;
 
   /** Passend zu `.learn-flashcard--paper` (10px) bzw. `--radius` dunkel */
   const flashcardSwipeRadiusPx = cardLook === "paper" ? 10 : 14;
@@ -731,15 +788,38 @@ export default function Learn() {
       )}
 
       {!focusMode && (
-        <p style={{ color: "var(--ink-muted)", marginTop: 0, fontSize: "0.95rem" }}>
-          {sessionReviewCount > 0 && (
-            <>
-              Schon <strong>{sessionReviewCount}</strong>{" "}
-              {sessionReviewCount === 1 ? "Bewertung" : "Bewertungen"} in dieser Einheit ·{" "}
-            </>
+        <div style={{ marginBottom: "0.25rem" }}>
+          <p style={{ color: "var(--ink-muted)", marginTop: 0, marginBottom: "0.35rem", fontSize: "0.95rem" }}>
+            {sessionReviewCount > 0 && (
+              <>
+                Schon <strong>{sessionReviewCount}</strong>{" "}
+                {sessionReviewCount === 1 ? "Bewertung" : "Bewertungen"} in dieser Einheit ·{" "}
+              </>
+            )}
+            Noch <strong>{queue.length}</strong> fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
+          </p>
+          {learnHorizonMs > 0 && (
+            <p style={{ color: "var(--ink-muted)", margin: 0, fontSize: "0.82rem" }}>
+              Übungs-Horizont +{formatLearnHorizon(learnHorizonMs)} (nur Anzeige) ·{" "}
+              <button
+                type="button"
+                onClick={() => setLearnHorizonMs(0)}
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  color: "var(--accent)",
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontWeight: 600,
+                  textDecoration: "underline",
+                }}
+              >
+                zurücksetzen
+              </button>
+            </p>
           )}
-          Noch <strong>{queue.length}</strong> fällig · bewerte ehrlich, der Algorithmus passt die Abstände an
-        </p>
+        </div>
       )}
 
       <div style={innerColStyle}>
@@ -751,8 +831,24 @@ export default function Learn() {
                 position: "relative",
                 width: "100%",
                 marginBottom: focusMode ? 0 : "1.25rem",
+                minHeight: focusMode ? undefined : 220,
               }}
             >
+              {flashReveal && confirmBackdrop != null && (
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    borderRadius: flashcardSwipeRadiusPx,
+                    zIndex: 0,
+                    pointerEvents: "none",
+                    transition: "opacity 0.15s ease",
+                    opacity: backdropOpacity,
+                    ...confirmBackdrop,
+                  }}
+                />
+              )}
               <div
                 className={`learn-flashcard learn-flashcard--${cardLook}`}
                 role="button"
@@ -774,6 +870,7 @@ export default function Learn() {
                 }}
                 style={{
                   position: "relative",
+                  zIndex: 1,
                   ...(focusMode
                     ? {
                         width: "100%",
@@ -792,6 +889,7 @@ export default function Learn() {
                       } satisfies CSSProperties)
                     : {}),
                   ...cardMotionStyle,
+                  ...(tapOutline ?? {}),
                 }}
               >
               <div style={{ position: "relative", zIndex: 1 }}>
@@ -966,39 +1064,7 @@ export default function Learn() {
                 </div>
               )}
               </div>
-              {flashReveal && swipeDragHintOverlayStyle && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: flashcardSwipeRadiusPx,
-                    pointerEvents: "none",
-                    zIndex: 50,
-                    opacity: Math.min(0.97, 0.42 + swipeDragHintInten * 0.48),
-                    transition: "opacity 0.08s linear",
-                    mixBlendMode: cardLook === "paper" ? "multiply" : "normal",
-                    transform: "translateZ(0)",
-                    ...swipeDragHintOverlayStyle,
-                  }}
-                />
-              )}
-              {flashReveal && glowOverlay && (
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    borderRadius: flashcardSwipeRadiusPx,
-                    pointerEvents: "none",
-                    zIndex: 51,
-                    opacity: 0.62,
-                    transition: "opacity 0.14s ease",
-                    transform: "translateZ(0)",
-                    ...glowOverlay,
-                  }}
-                />
-              )}
+              </div>
             </div>
             </div>
           </div>
@@ -1036,7 +1102,7 @@ export default function Learn() {
                     transition: "opacity 0.45s ease",
                   }}
                 >
-                  Auf der Karte wischen:&nbsp;rechts · <strong>einfach</strong>, links&nbsp;· <strong>
+                  Beim Wegwischen leuchtet die Fläche hinter der Karte kurz in der passenden Ampelfarbe; mit den Buttons erscheint ein farbiger Rand. Wischen:&nbsp;rechts · <strong>einfach</strong>, links · <strong>
                     gar&nbsp;nicht
                   </strong>, nach oben · <strong>gut</strong>, nach unten · <strong>schlecht</strong>
                 </p>
@@ -1083,7 +1149,6 @@ export default function Learn() {
         )}
         </div>
       </div>
-    </div>
   );
 }
 
