@@ -11,9 +11,11 @@ export default function ProfileUnlockGate() {
     unlockActiveWithPassword,
     recoverActiveWithRecoveryCode,
     switchProfile,
+    createProfile,
   } = useProfile();
   const [pwd, setPwd] = useState("");
   const [recoverCode, setRecoverCode] = useState("");
+  const [newProfileLabel, setNewProfileLabel] = useState("");
   const [mode, setMode] = useState<"password" | "recovery">("password");
   const [err, setErr] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,6 +64,16 @@ export default function ProfileUnlockGate() {
     const id = e.target.value;
     if (id) switchProfile(id);
     e.target.value = "";
+  };
+
+  const onCreateNewProfile = () => {
+    if (busy) return;
+    setErr(false);
+    const name = newProfileLabel.trim();
+    createProfile(name || `Neu ${profiles.length + 1}`);
+    setNewProfileLabel("");
+    setPwd("");
+    setRecoverCode("");
   };
 
   return (
@@ -244,6 +256,53 @@ export default function ProfileUnlockGate() {
         >
           {busy ? "…" : mode === "password" ? "Entsperren" : "Schutz mit Backup-Code aufheben"}
         </button>
+
+        <div style={{ paddingTop: "0.35rem", borderTop: "1px solid rgba(232,234,239,0.08)" }}>
+          <p style={{ margin: "0 0 0.5rem", fontSize: "0.88rem", color: "var(--ink-muted)", lineHeight: 1.45, fontWeight: 600 }}>
+            Neues Profil ohne Passwort
+          </p>
+          <p style={{ margin: "0 0 0.75rem", fontSize: "0.82rem", color: "var(--ink-muted)", lineHeight: 1.45 }}>
+            Wenn du das Passwort hier nicht eingeben willst oder dich unsicher bist: leeres weiteres&nbsp;Profil, das 
+            geschützte <strong>{label}</strong> bleibt lokal bestehen&nbsp;– du kannst später in der Kopfzeile wieder wechseln.
+          </p>
+          <label style={{ display: "grid", gap: "0.35rem", marginBottom: "0.6rem" }}>
+            <span style={{ fontSize: "0.88rem", color: "var(--ink-muted)" }}>Profilname (optional)</span>
+            <input
+              type="text"
+              value={newProfileLabel}
+              onChange={(e) => setNewProfileLabel(e.target.value)}
+              disabled={busy}
+              placeholder={`z.\u202fB. Schuljahr`}
+              autoComplete="off"
+              style={{
+                padding: "0.55rem 0.65rem",
+                borderRadius: 10,
+                border: "1px solid rgba(232, 234, 239, 0.12)",
+                background: "var(--bg-deep)",
+                color: "var(--ink)",
+                fontFamily: "var(--font-ui)",
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onCreateNewProfile}
+            style={{
+              width: "100%",
+              padding: "0.6rem 1rem",
+              borderRadius: 999,
+              border: "1px solid rgba(232, 234, 239, 0.2)",
+              background: busy ? "var(--bg-deep)" : "var(--bg-raised)",
+              color: "var(--ink)",
+              fontWeight: 700,
+              cursor: busy ? "not-allowed" : "pointer",
+              fontFamily: "var(--font-ui)",
+            }}
+          >
+            Neues Profil anlegen und wechseln
+          </button>
+        </div>
 
         {!showRecoveryToggle && (
           <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--ink-muted)", lineHeight: 1.45 }}>

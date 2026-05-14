@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from "react";
 import type { VocabularyCard } from "@/types";
 import { formatCardMetaLine } from "@/lib/cardMeta";
+import { LEARN_SCROLL_SUPPRESS_PIXELS, qualityFromSwipeVector } from "@/lib/learnSwipeRating";
 import {
   LEARN_FLASHCARD_STORAGE_KEY,
   getLearnFlashcardAppearance,
@@ -94,6 +104,62 @@ export default function Learn() {
     },
     [cards, current]
   );
+
+  /** Rückseite zeigen · Wischen ohne Scroll-Fehltrigger (siehe learnSwipeRating) */
+  const revealSwipeRef = useRef<{
+    pointerId: number | null;
+    x0: number;
+    y0: number;
+    scrollTop0: number;
+  }>({ pointerId: null, x0: 0, y0: 0, scrollTop0: 0 });
+
+  useEffect(() => {
+    revealSwipeRef.current.pointerId = null;
+  }, [mode, current?.id]);
+
+  const onRevealPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (method !== "flash" || mode !== "reveal") return;
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      revealSwipeRef.current = {
+        pointerId: e.pointerId,
+        x0: e.clientX,
+        y0: e.clientY,
+        scrollTop0: e.currentTarget.scrollTop,
+      };
+    },
+    [method, mode]
+  );
+
+  const finalizeRevealSwipe = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const s = revealSwipeRef.current;
+      if (s.pointerId == null || s.pointerId !== e.pointerId) return;
+      revealSwipeRef.current = { pointerId: null, x0: 0, y0: 0, scrollTop0: 0 };
+
+      const scrollMoved = Math.abs(e.currentTarget.scrollTop - s.scrollTop0);
+      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS) return;
+
+      const q = qualityFromSwipeVector(e.clientX - s.x0, e.clientY - s.y0);
+      if (q) updateCurrent(q);
+    },
+    [updateCurrent]
+  );
+
+  const onRevealPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      finalizeRevealSwipe(e);
+    },
+    [finalizeRevealSwipe]
+  );
+
+  const onRevealPointerCancel = useCallback(() => {
+    revealSwipeRef.current.pointerId = null;
+  }, []);
 
   const checkTyped = useCallback(() => {
     if (!current || typeFeedback !== null) return;
@@ -342,6 +408,10 @@ export default function Learn() {
               className={`learn-flashcard learn-flashcard--${cardLook}`}
               role="button"
               tabIndex={0}
+              onPointerDown={onRevealPointerDown}
+              onPointerUp={onRevealPointerUp}
+              onPointerCancel={onRevealPointerCancel}
+              onLostPointerCapture={onRevealPointerCancel}
               onClick={() => method === "flash" && setMode((m) => (m === "front" ? "reveal" : m))}
               onKeyDown={(e) => {
                 if (method === "flash" && (e.key === "Enter" || e.key === " ")) {
@@ -553,7 +623,20 @@ export default function Learn() {
                 fontWeight: 500,
               }}
             >
-              Wie gut erinnert?:
+              Wie gut erinnert?
+            </p>
+            <p
+              style={{
+                margin: "0 0 0.85rem",
+                fontSize: "0.82rem",
+                color: "var(--ink-muted)",
+                textAlign: "center",
+                lineHeight: 1.45,
+                opacity: 0.92,
+              }}
+            >
+              Touch am Kartenbereich:&nbsp;rechts · <strong>einfach</strong>, links&nbsp;· <strong>gar&nbsp;nicht</strong>, nach
+              oben&nbsp;· <strong>gut</strong>, nach unten&nbsp;· <strong>schlecht</strong>
             </p>
             <div
               style={{
