@@ -2,6 +2,7 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -19,6 +20,7 @@ import {
 } from "@/lib/profile";
 import { verifyProfilePassword } from "@/lib/profilePwdCrypto";
 import { addUnlockedProfile, getUnlockedProfileIds } from "@/lib/sessionUnlock";
+import { ensureStarterDeckIfEmpty } from "@/lib/starterVocab";
 
 function subscribeProfile(cb: () => void) {
   window.addEventListener("vokabeltrainer:profile", cb);
@@ -79,6 +81,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     profileIsLocked(activeProfile) &&
     !sessionUnlockedIds.has(activeProfile.id)
   );
+
+  useEffect(() => {
+    if (activeProfileLockedOut) return;
+    if (!activeProfileId) return;
+    ensureStarterDeckIfEmpty(activeProfileId);
+  }, [activeProfileId, activeProfileLockedOut]);
 
   const recoverActiveWithRecoveryCodeCb = useCallback(
     async (recoveryPlain: string) => {
