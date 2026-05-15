@@ -93,3 +93,13 @@ export function ratingSwipeDockDotStyle(quality: ReviewQuality): {
     ].join(", "),
   };
 }
+
+/** Kurzer Vollbild-Puls nach Wisch-Bewertung — gleiche Ampel wie Kugel/Karte */
+export function ratingSwipeScreenPulseBackground(quality: ReviewQuality): string {
+  const { angle, fill } = ampelOverlay(quality);
+  const [fr, fg, fb] = fill;
+  return [
+    `radial-gradient(ellipse 135% 92% at 50% 44%, rgba(${fr},${fg},${fb},0.44) 0%, rgba(${fr},${fg},${fb},0.15) 52%, transparent 74%)`,
+    `linear-gradient(${angle}deg, rgba(${fr},${fg},${fb},0.22) 0%, transparent 56%)`,
+  ].join(", ");
+}

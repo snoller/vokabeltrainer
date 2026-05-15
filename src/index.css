@@ -248,6 +248,23 @@ h3 {
 }
 
 /* Feste Ampel-Kugel nach Wisch-Bewertung (Learn) */
+.learn-rating-screen-pulse {
+  animation: learnRatingScreenPulse 0.46s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+@keyframes learnRatingScreenPulse {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 .learn-rating-dock-dot {
   animation: learnRatingDockPop 0.38s cubic-bezier(0.34, 1.12, 0.45, 1) both;
 }
@@ -261,7 +278,21 @@ h3 {
     opacity: 1;
   }
 }
+@keyframes learnRatingScreenPulseReduced {
+  0% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.72;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .learn-rating-screen-pulse {
+    animation: learnRatingScreenPulseReduced 0.22s ease-out forwards;
+  }
   .learn-rating-dock-dot {
     animation: none;
     opacity: 1;

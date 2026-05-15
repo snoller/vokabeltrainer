@@ -29,6 +29,7 @@ import {
   ratingFlashOverlay,
   ratingSwipeDockDotStyle,
   ratingSwipeDragOverlay,
+  ratingSwipeScreenPulseBackground,
   swipeDragHintIntensity,
 } from "@/lib/learnRatingVisual";
 import {
@@ -635,27 +636,40 @@ export default function Learn() {
   return (
     <div style={shellStyle}>
       {method === "flash" && ratingDockQ != null && (
-        <div
-          aria-hidden
-          style={{
-            position: "fixed",
-            top: "50%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 200,
-            pointerEvents: "none",
-          }}
-        >
+        <>
           <div
-            className="learn-rating-dock-dot"
+            aria-hidden
+            className="learn-rating-screen-pulse"
             style={{
-              width: 20,
-              height: 20,
-              borderRadius: 9999,
-              ...ratingSwipeDockDotStyle(ratingDockQ),
+              position: "fixed",
+              inset: 0,
+              zIndex: 190,
+              pointerEvents: "none",
+              background: ratingSwipeScreenPulseBackground(ratingDockQ),
             }}
           />
-        </div>
+          <div
+            aria-hidden
+            style={{
+              position: "fixed",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 200,
+              pointerEvents: "none",
+            }}
+          >
+            <div
+              className="learn-rating-dock-dot"
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 9999,
+                ...ratingSwipeDockDotStyle(ratingDockQ),
+              }}
+            />
+          </div>
+        </>
       )}
       {!focusMode && (
         <div style={{ marginBottom: "1rem" }}>
