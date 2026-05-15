@@ -1,4 +1,6 @@
-/** Spaced repetition: classic SM-2 (SuperMemo 2) intervals in minutes for short-term, then days. */
+/** Spaced repetition: classic SM-2 (SuperMemo 2). Kurze „Wiederhole jetzt“-Schritte in Minuten; Abstände in Tagen
+ *  werden nach **Kalendertag (lokal, 00:00)** gerechnet, nicht als exakte 24 h ab Bewertungsuhrzeit — damit z. B.
+ * „abends gelernt, morgens früh wieder dran“ keine künstliche Sperre hat. */
 
 export type ReviewQuality =
   | "again"
@@ -24,7 +26,20 @@ export function qualityToSm2(q: ReviewQuality): number {
 
 const MIN_EASE = 1.3;
 const MS_PER_MIN = 60_000;
-const MS_PER_DAY = 86_400_000;
+
+/** Start des lokalen Kalendertags (00:00) für Fälligkeit nach Tagen */
+function startOfLocalDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** `days` ganze lokale Kalendertage auf einen Zeitpunkt addieren (DST-sicher via Date) */
+function addLocalCalendarDays(ms: number, days: number): number {
+  const d = new Date(ms);
+  d.setDate(d.getDate() + days);
+  return d.getTime();
+}
 
 export interface SrsState {
   easeFactor: number;
@@ -81,7 +96,8 @@ export function scheduleNext(
   }
   reps += 1;
 
-  const dueAt = now + intervalDays * MS_PER_DAY;
+  const dayStart = startOfLocalDay(now);
+  const dueAt = addLocalCalendarDays(dayStart, intervalDays);
 
   return {
     easeFactor: ease,
@@ -103,6 +119,7 @@ export function formatIntervalGerman(s: SrsState, now: number): string {
   if (mins < 60) return `${mins} Min`;
   const hours = Math.round(diff / (60 * MS_PER_MIN));
   if (hours < 48) return `${hours} Std`;
+  const MS_PER_DAY = 86_400_000;
   const days = Math.round(diff / MS_PER_DAY);
   if (days < 14) return `${days} Tag${days === 1 ? "" : "e"}`;
   const weeks = Math.round(days / 7);
