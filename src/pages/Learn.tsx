@@ -27,7 +27,6 @@ import {
   LEARN_CARD_FLY_MS,
   LEARN_RATING_DOCK_LINGER_MS,
   ratingFlashOverlay,
-  ratingSwipeDockDotStyle,
   ratingSwipeDragOverlay,
   ratingSwipeScreenPulseBackground,
   swipeDragHintIntensity,
@@ -131,7 +130,7 @@ export default function Learn() {
     setTyped("");
   }, [current?.id, method]);
 
-  const [focusMode, setFocusMode] = useState(false);
+  const [focusMode, setFocusMode] = useState(true);
 
   /** Im Fokus: Erklärtexte bei Rückseite kurz zeigen, dann ausblenden */
   const [focusCoachPeek, setFocusCoachPeek] = useState(false);
@@ -636,40 +635,17 @@ export default function Learn() {
   return (
     <div style={shellStyle}>
       {method === "flash" && ratingDockQ != null && (
-        <>
-          <div
-            aria-hidden
-            className="learn-rating-screen-pulse"
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 190,
-              pointerEvents: "none",
-              background: ratingSwipeScreenPulseBackground(ratingDockQ),
-            }}
-          />
-          <div
-            aria-hidden
-            style={{
-              position: "fixed",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 200,
-              pointerEvents: "none",
-            }}
-          >
-            <div
-              className="learn-rating-dock-dot"
-              style={{
-                width: 20,
-                height: 20,
-                borderRadius: 9999,
-                ...ratingSwipeDockDotStyle(ratingDockQ),
-              }}
-            />
-          </div>
-        </>
+        <div
+          aria-hidden
+          className="learn-rating-screen-pulse"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 190,
+            pointerEvents: "none",
+            background: ratingSwipeScreenPulseBackground(ratingDockQ),
+          }}
+        />
       )}
       {!focusMode && (
         <div style={{ marginBottom: "1rem" }}>

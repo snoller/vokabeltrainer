@@ -247,7 +247,7 @@ h3 {
   border-color: rgba(91, 185, 140, 0.5);
 }
 
-/* Feste Ampel-Kugel nach Wisch-Bewertung (Learn) */
+/* Vollbild-Ampel-Puls nach Wisch-Bewertung (Learn) */
 .learn-rating-screen-pulse {
   animation: learnRatingScreenPulse 1.05s cubic-bezier(0.33, 0.72, 0.42, 1) forwards;
 }
@@ -265,19 +265,6 @@ h3 {
     opacity: 0;
   }
 }
-.learn-rating-dock-dot {
-  animation: learnRatingDockPop 0.72s cubic-bezier(0.34, 1.12, 0.45, 1) both;
-}
-@keyframes learnRatingDockPop {
-  from {
-    transform: scale(0.55);
-    opacity: 0.72;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
 @keyframes learnRatingScreenPulseReduced {
   0% {
     opacity: 0;
@@ -292,9 +279,5 @@ h3 {
 @media (prefers-reduced-motion: reduce) {
   .learn-rating-screen-pulse {
     animation: learnRatingScreenPulseReduced 0.42s ease-out forwards;
-  }
-  .learn-rating-dock-dot {
-    animation: none;
-    opacity: 1;
   }
 }

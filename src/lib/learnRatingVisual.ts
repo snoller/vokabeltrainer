@@ -2,8 +2,8 @@ import { LEARN_SWIPE_MIN_PX, LEARN_SWIPE_TINT_HINT_MIN_PX } from "@/lib/learnSwi
 import type { ReviewQuality } from "@/lib/srs";
 
 /**
- * Einheitliche Ampel: easy (rechts) kühl‑türkis, good (oben) warmes Gelbgrün,
- * hard gelb, again Korall‑Rosé — easy/good bewusst getrennt, nicht zwei „fast gleiche“ Grüns.
+ * Einheitliche Ampel: easy (rechts) sattes „OK“-Grün, good (oben) dezenteres Grün,
+ * hard gelb, again Korall‑Rosé.
  */
 function ampelOverlay(quality: ReviewQuality): {
   angle: number;
@@ -12,15 +12,15 @@ function ampelOverlay(quality: ReviewQuality): {
 } {
   switch (quality) {
     case "easy":
-      return { angle: 226, fill: [42, 178, 156], rim: [58, 194, 172] };
+      return { angle: 208, fill: [22, 148, 76], rim: [38, 166, 94] };
     case "good":
-      return { angle: 178, fill: [124, 188, 76], rim: [142, 204, 90] };
+      return { angle: 172, fill: [118, 166, 138], rim: [138, 182, 156] };
     case "hard":
       return { angle: 174, fill: [218, 168, 68], rim: [236, 190, 86] };
     case "again":
       return { angle: 138, fill: [200, 128, 128], rim: [212, 150, 148] };
     default:
-      return { angle: 226, fill: [42, 178, 156], rim: [58, 194, 172] };
+      return { angle: 208, fill: [22, 148, 76], rim: [38, 166, 94] };
   }
 }
 
@@ -73,28 +73,7 @@ export function ratingSwipeDragOverlay(quality: ReviewQuality, intensity: number
 export const LEARN_CARD_FLY_MS = 340;
 export const LEARN_RATING_DOCK_LINGER_MS = 1180;
 
-/**
- * Kleine fixe Ampel-Kugel (unten mittig): kräftige Füllfarbe + Rand,
- * damit die Bewertung nach dem Wegwischen auch ohne Karten-Overlay gut erkennbar ist.
- */
-export function ratingSwipeDockDotStyle(quality: ReviewQuality): {
-  background: string;
-  boxShadow: string;
-} {
-  const { fill, rim } = ampelOverlay(quality);
-  const [fr, fg, fb] = fill;
-  const [rr, rg, rb] = rim;
-  return {
-    background: `rgb(${fr},${fg},${fb})`,
-    boxShadow: [
-      `0 0 0 2px rgba(${rr},${rg},${rb},0.95)`,
-      `0 3px 12px rgba(0,0,0,0.35)`,
-      `0 0 20px rgba(${fr},${fg},${fb},0.55)`,
-    ].join(", "),
-  };
-}
-
-/** Kurzer Vollbild-Puls nach Wisch-Bewertung — gleiche Ampel wie Kugel/Karte */
+/** Kurzer Vollbild-Puls nach Wisch-Bewertung — gleiche Ampel wie Karten-Overlay */
 export function ratingSwipeScreenPulseBackground(quality: ReviewQuality): string {
   const { angle, fill } = ampelOverlay(quality);
   const [fr, fg, fb] = fill;
