@@ -8,6 +8,7 @@
     "dev:client": "vite",
     "dev:server": "tsx watch server/index.ts",
     "build": "vite build",
+    "icons:pwa": "node scripts/gen-pwa-icons.mjs",
     "build:pages": "vite build && node scripts/gh-pages-404.mjs",
     "preview": "vite preview"
   },

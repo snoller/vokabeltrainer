@@ -3,7 +3,10 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ProfileProvider } from "@/context/ProfileContext";
 import App from "@/App";
+import { applyPwaDocumentHead } from "@/lib/pwaHead";
 import "@/index.css";
+
+applyPwaDocumentHead();
 
 function routerBasename(): string | undefined {
   const url = import.meta.env.BASE_URL;

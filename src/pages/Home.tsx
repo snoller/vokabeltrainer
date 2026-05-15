@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { LearnMotivationState } from "@/lib/learnMotivation";
 import { getLearnMotivationSnapshot, subscribeLearnMotivation } from "@/lib/learnMotivation";
 import { getCardsStorageSnapshot, parseCardsSnapshot } from "@/lib/storage";
@@ -16,7 +16,33 @@ function subscribe(cb: () => void) {
   };
 }
 
+function readStandalone(): boolean {
+  if (typeof window === "undefined") return false;
+  const nav = window.navigator as Navigator & { standalone?: boolean };
+  return (
+    window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true
+  );
+}
+
+/** Chrome/Edge u. a. auf Android; iOS Safari feuert das nicht */
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: string }>;
+}
+
 export default function Home() {
+  const [standalone] = useState(readStandalone);
+  const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as InstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+  }, []);
+
   const raw = useSyncExternalStore(subscribe, getCardsStorageSnapshot, () => "[]");
   const cards = useMemo(() => parseCardsSnapshot(raw), [raw]);
   const motivationRaw = useSyncExternalStore(
@@ -173,6 +199,104 @@ export default function Home() {
           Aus Schulbuch-Foto
         </Link>
       </div>
+
+      {!standalone && (
+        <section
+          style={{
+            marginTop: "2.5rem",
+            padding: "1.15rem 1.2rem",
+            maxWidth: "54ch",
+            borderRadius: "var(--radius)",
+            border: "1px solid rgba(232, 234, 239, 0.1)",
+            background: "var(--bg-card)",
+          }}
+          aria-labelledby="home-pwa-heading"
+        >
+          <h2
+            id="home-pwa-heading"
+            style={{
+              margin: "0 0 0.6rem",
+              fontSize: "1.05rem",
+              fontFamily: "var(--font-display)",
+              fontWeight: 700,
+              color: "var(--ink)",
+            }}
+          >
+            Auf dem Handy wie eine App
+          </h2>
+          <p style={{ margin: "0 0 0.85rem", fontSize: "0.93rem", color: "var(--ink-muted)", lineHeight: 1.55 }}>
+            Du kannst die Seite auf dem Startbildschirm ablegen – dann öffnet sie ohne Browser-Leiste wie eine eigene App.
+          </p>
+          {installPrompt && (
+            <div style={{ marginBottom: "0.9rem" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    await installPrompt.prompt();
+                    await installPrompt.userChoice;
+                    setInstallPrompt(null);
+                  })();
+                }}
+                style={{
+                  padding: "0.65rem 1.1rem",
+                  borderRadius: 999,
+                  border: "1px solid rgba(201, 162, 39, 0.55)",
+                  background: "rgba(201, 162, 39, 0.14)",
+                  color: "var(--accent)",
+                  fontWeight: 700,
+                  fontSize: "0.9rem",
+                  cursor: "pointer",
+                  fontFamily: "var(--font-ui)",
+                }}
+              >
+                App installieren / Startbildschirm
+              </button>
+              <span style={{ display: "block", marginTop: "0.4rem", fontSize: "0.78rem", color: "var(--ink-muted)" }}>
+                Nur wenn der Browser eine Installation anbietet (üblich: Chrome auf Android).
+              </span>
+            </div>
+          )}
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "1.25rem",
+              fontSize: "0.92rem",
+              color: "var(--ink-muted)",
+              lineHeight: 1.6,
+            }}
+          >
+            <li style={{ marginBottom: "0.45rem" }}>
+              <strong style={{ color: "var(--ink)" }}>iPhone / iPad (Safari):</strong> unten oder oben auf{" "}
+              <strong>Teilen</strong> (Quadrat mit Pfeil), dann <strong>Zum Home-Bildschirm</strong> und{" "}
+              <strong>Hinzufügen</strong>. Von Apple keine automatische Hilfe-Schaltfläche vorgesehen – so gehen alle Websites.
+            </li>
+            <li>
+              <strong style={{ color: "var(--ink)" }}>Android (Chrome oder Edge):</strong> Menü über{" "}
+              <strong>drei Punkte</strong>, dann etwa <strong>App installieren</strong> oder{" "}
+              <strong>Zum Startbildschirm hinzufügen</strong>, je nach Gerät und Version – oder den Button weiter oben, falls er angezeigt wird.
+            </li>
+          </ul>
+          <p style={{ margin: "0.75rem 0 0", fontSize: "0.82rem", color: "var(--ink-muted)", lineHeight: 1.45 }}>
+            Die Adresse sollte per <strong style={{ color: "var(--ink)" }}>HTTPS</strong> erreichbar sein (öffentliche Seite). Lokal
+            auf dem Rechner reicht <code style={{ fontSize: "0.9em" }}>localhost</code> zum Ausprobieren.
+          </p>
+        </section>
+      )}
+
+      {standalone && (
+        <p
+          style={{
+            marginTop: "2rem",
+            fontSize: "0.88rem",
+            color: "var(--ink-muted)",
+            maxWidth: "54ch",
+          }}
+        >
+          Du nutzt die App offenbar schon im <strong style={{ color: "var(--ink)" }}>Vollbild-Modus</strong> (vom
+          Startbildschirm geöffnet).
+        </p>
+      )}
     </div>
   );
 }
