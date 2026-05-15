@@ -73,6 +73,21 @@ function formatLearnHorizon(ms: number): string {
   return `${d} T.`;
 }
 
+/** iPhone/iPad Safari: Pointer Capture auf scrollbarem Kontext lässt Wische oft nach wenigen px abbrechen */
+function isIosLike(): boolean {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent ?? "";
+  if (/iPad|iPhone|iPod/i.test(ua)) return true;
+  try {
+    if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+const LEARN_IOS_SKIP_POINTER_CAPTURE = isIosLike();
+
 type CardSwipeUi =
   | { kind: "idle" }
   | { kind: "drag"; tx: number; ty: number; rot: number; rdx: number; rdy: number }
@@ -164,6 +179,8 @@ export default function Learn() {
     getLearnRatingSound,
     getLearnRatingSound
   );
+  const ratingSoundOnRef = useRef(ratingSoundOn);
+  ratingSoundOnRef.current = ratingSoundOn;
 
   const flyCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tapFeedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -172,6 +189,11 @@ export default function Learn() {
   const [tapGlow, setTapGlow] = useState<ReviewQuality | null>(null);
   const [ratingDockQ, setRatingDockQ] = useState<ReviewQuality | null>(null);
   const flySwipeQuality = cardSwipe.kind === "fly" ? cardSwipe.q : null;
+
+  const revealGestureCtxRef = useRef({ method, mode });
+  revealGestureCtxRef.current = { method, mode };
+  const cardSwipeRef = useRef(cardSwipe);
+  cardSwipeRef.current = cardSwipe;
 
   const clearFlyCommitTimer = useCallback(() => {
     if (flyCommitTimerRef.current != null) {
@@ -256,10 +278,106 @@ export default function Learn() {
     scrollTop0: number;
   }>({ pointerId: null, x0: 0, y0: 0, scrollTop0: 0 });
 
+  const flashcardSwipeSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const iosRevealWinListenersRef = useRef<{
+    move: (ev: PointerEvent) => void;
+    end: (ev: PointerEvent) => void;
+  } | null>(null);
+
+  const cleanupIosRevealWindowListeners = useCallback(() => {
+    const t = iosRevealWinListenersRef.current;
+    if (!t) return;
+    window.removeEventListener("pointermove", t.move);
+    window.removeEventListener("pointerup", t.end);
+    window.removeEventListener("pointercancel", t.end);
+    iosRevealWinListenersRef.current = null;
+  }, []);
+
+  useEffect(() => () => cleanupIosRevealWindowListeners(), [cleanupIosRevealWindowListeners]);
+
+  const applyRevealPointerMoveCore = useCallback((clientX: number, clientY: number, pointerId: number) => {
+    const s = revealSwipeRef.current;
+    if (s.pointerId == null || s.pointerId !== pointerId) return;
+    const { method: m, mode: md } = revealGestureCtxRef.current;
+    if (m !== "flash" || md !== "reveal") return;
+    if (cardSwipeRef.current.kind === "fly") return;
+    const rdx = clientX - s.x0;
+    const rdy = clientY - s.y0;
+    if (Math.hypot(rdx, rdy) < 6) return;
+    const cap = (n: number) => Math.sign(n) * Math.min(Math.abs(n), 62);
+    setCardSwipe({
+      kind: "drag",
+      tx: cap(rdx * 0.28),
+      ty: cap(rdy * 0.28),
+      rot: Math.max(-7, Math.min(7, rdx * 0.05)),
+      rdx,
+      rdy,
+    });
+  }, []);
+
+  const finalizeRevealSwipeWithScrollEl = useCallback(
+    (pointerId: number, clientX: number, clientY: number, scrollEl: HTMLDivElement | null) => {
+      cleanupIosRevealWindowListeners();
+      const s = revealSwipeRef.current;
+      if (s.pointerId == null || s.pointerId !== pointerId) return;
+
+      if (scrollEl == null) {
+        revealSwipeRef.current = { pointerId: null, x0: 0, y0: 0, scrollTop0: 0 };
+        setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
+        return;
+      }
+
+      const scrollMoved = Math.abs(scrollEl.scrollTop - s.scrollTop0);
+      const dx = clientX - s.x0;
+      const dy = clientY - s.y0;
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+
+      revealSwipeRef.current = { pointerId: null, x0: 0, y0: 0, scrollTop0: 0 };
+
+      const clearDrag = () => setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
+
+      const canScrollVertically = scrollEl.scrollHeight > scrollEl.clientHeight + 2;
+
+      if (
+        canScrollVertically &&
+        scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS &&
+        Math.max(ax, ay) < LEARN_SWIPE_MIN_PX
+      ) {
+        clearDrag();
+        return;
+      }
+      if (ax < LEARN_SWIPE_MIN_PX && ay < LEARN_SWIPE_MIN_PX) {
+        clearDrag();
+        return;
+      }
+
+      const q = qualityFromSwipeVector(dx, dy);
+      if (!q) {
+        clearDrag();
+        return;
+      }
+      if (ratingSoundOnRef.current) playLearnRatingBlip(q);
+      const mag = Math.hypot(dx, dy) || 1;
+      const ux = dx / mag;
+      const uy = dy / mag;
+      setCardSwipe({ kind: "fly", q, ux, uy, phase: "start" });
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setCardSwipe((prev) =>
+            prev.kind === "fly" && prev.phase === "start" ? { ...prev, phase: "leave" } : prev
+          );
+        });
+      });
+    },
+    [cleanupIosRevealWindowListeners]
+  );
+
   useEffect(() => {
+    cleanupIosRevealWindowListeners();
     revealSwipeRef.current.pointerId = null;
     resetLearnMotion();
-  }, [mode, current?.id, resetLearnMotion]);
+  }, [mode, current?.id, resetLearnMotion, cleanupIosRevealWindowListeners]);
 
   useEffect(() => {
     if (flySwipeQuality != null) {
@@ -300,87 +418,62 @@ export default function Learn() {
 
   const onRevealPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (cardSwipe.kind === "fly" || method !== "flash" || mode !== "reveal") return;
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
+      if (cardSwipeRef.current.kind === "fly" || method !== "flash" || mode !== "reveal") return;
+
+      cleanupIosRevealWindowListeners();
+
+      if (!LEARN_IOS_SKIP_POINTER_CAPTURE) {
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
       }
+
       revealSwipeRef.current = {
         pointerId: e.pointerId,
         x0: e.clientX,
         y0: e.clientY,
         scrollTop0: e.currentTarget.scrollTop,
       };
+
+      if (LEARN_IOS_SKIP_POINTER_CAPTURE) {
+        const pid = e.pointerId;
+        const move = (ev: PointerEvent) => {
+          if (ev.pointerId !== pid) return;
+          applyRevealPointerMoveCore(ev.clientX, ev.clientY, pid);
+        };
+        const end = (ev: PointerEvent) => {
+          if (ev.pointerId !== pid) return;
+          finalizeRevealSwipeWithScrollEl(pid, ev.clientX, ev.clientY, flashcardSwipeSurfaceRef.current);
+        };
+        window.addEventListener("pointermove", move, { passive: true });
+        window.addEventListener("pointerup", end);
+        window.addEventListener("pointercancel", end);
+        iosRevealWinListenersRef.current = { move, end };
+      }
     },
-    [cardSwipe.kind, method, mode]
+    [
+      method,
+      mode,
+      cleanupIosRevealWindowListeners,
+      applyRevealPointerMoveCore,
+      finalizeRevealSwipeWithScrollEl,
+    ]
   );
 
   const onRevealPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      const s = revealSwipeRef.current;
-      if (s.pointerId == null || s.pointerId !== e.pointerId || method !== "flash" || mode !== "reveal")
-        return;
-      if (cardSwipe.kind === "fly") return;
-      const rdx = e.clientX - s.x0;
-      const rdy = e.clientY - s.y0;
-      if (Math.hypot(rdx, rdy) < 6) return;
-      const cap = (n: number) => Math.sign(n) * Math.min(Math.abs(n), 62);
-      setCardSwipe({
-        kind: "drag",
-        tx: cap(rdx * 0.28),
-        ty: cap(rdy * 0.28),
-        rot: Math.max(-7, Math.min(7, rdx * 0.05)),
-        rdx,
-        rdy,
-      });
+      applyRevealPointerMoveCore(e.clientX, e.clientY, e.pointerId);
     },
-    [cardSwipe.kind, method, mode]
+    [applyRevealPointerMoveCore]
   );
 
   const finalizeRevealSwipe = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      const s = revealSwipeRef.current;
-      if (s.pointerId == null || s.pointerId !== e.pointerId) return;
-      revealSwipeRef.current = { pointerId: null, x0: 0, y0: 0, scrollTop0: 0 };
-
-      const scrollMoved = Math.abs(e.currentTarget.scrollTop - s.scrollTop0);
-      const dx = e.clientX - s.x0;
-      const dy = e.clientY - s.y0;
-      const ax = Math.abs(dx);
-      const ay = Math.abs(dy);
-      const clearDrag = () => setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
-
-      /* Scroll nur dann als „lesen, nicht bewerten“, wenn der Wisch noch nicht klar genug ist –
-       * sonst bricht jede kleine Scroll-Bewegung bei langer Rückseite den Wisch ab. */
-      if (scrollMoved >= LEARN_SCROLL_SUPPRESS_PIXELS && Math.max(ax, ay) < LEARN_SWIPE_MIN_PX) {
-        clearDrag();
-        return;
-      }
-      if (ax < LEARN_SWIPE_MIN_PX && ay < LEARN_SWIPE_MIN_PX) {
-        clearDrag();
-        return;
-      }
-
-      const q = qualityFromSwipeVector(dx, dy);
-      if (!q) {
-        clearDrag();
-        return;
-      }
-      if (ratingSoundOn) playLearnRatingBlip(q);
-      const mag = Math.hypot(dx, dy) || 1;
-      const ux = dx / mag;
-      const uy = dy / mag;
-      setCardSwipe({ kind: "fly", q, ux, uy, phase: "start" });
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          setCardSwipe((prev) =>
-            prev.kind === "fly" && prev.phase === "start" ? { ...prev, phase: "leave" } : prev
-          );
-        });
-      });
+      finalizeRevealSwipeWithScrollEl(e.pointerId, e.clientX, e.clientY, e.currentTarget);
     },
-    [ratingSoundOn]
+    [finalizeRevealSwipeWithScrollEl]
   );
 
   const onRevealPointerUp = useCallback(
@@ -391,9 +484,10 @@ export default function Learn() {
   );
 
   const onRevealPointerCancel = useCallback(() => {
+    cleanupIosRevealWindowListeners();
     revealSwipeRef.current.pointerId = null;
     setCardSwipe((c) => (c.kind === "drag" ? { kind: "idle" } : c));
-  }, []);
+  }, [cleanupIosRevealWindowListeners]);
 
   const checkTyped = useCallback(() => {
     if (!current || typeFeedback !== null) return;
@@ -879,6 +973,7 @@ export default function Learn() {
               }}
             >
               <div
+                ref={flashcardSwipeSurfaceRef}
                 className={`learn-flashcard learn-flashcard--${cardLook}`}
                 role="button"
                 tabIndex={0}
@@ -886,10 +981,12 @@ export default function Learn() {
                   setCardSwipe({ kind: "idle" });
                   onRevealPointerDown(e);
                 }}
-                onPointerMove={onRevealPointerMove}
-                onPointerUp={onRevealPointerUp}
+                onPointerMove={LEARN_IOS_SKIP_POINTER_CAPTURE ? undefined : onRevealPointerMove}
+                onPointerUp={LEARN_IOS_SKIP_POINTER_CAPTURE ? undefined : onRevealPointerUp}
                 onPointerCancel={onRevealPointerCancel}
-                onLostPointerCapture={onRevealPointerCancel}
+                onLostPointerCapture={
+                  LEARN_IOS_SKIP_POINTER_CAPTURE ? undefined : onRevealPointerCancel
+                }
                 onClick={() => method === "flash" && setMode((m) => (m === "front" ? "reveal" : m))}
                 onKeyDown={(e) => {
                   if (method === "flash" && (e.key === "Enter" || e.key === " ")) {
@@ -913,7 +1010,9 @@ export default function Learn() {
                     ? ({
                         WebkitUserSelect: "none",
                         userSelect: "none",
-                        touchAction: "manipulation",
+                        /* pan-y sonst: vertikales Scrollen respektieren; auf iOS bricht der Wisch damit oft ab */
+                        touchAction: LEARN_IOS_SKIP_POINTER_CAPTURE ? "manipulation" : "pan-y",
+                        ...(LEARN_IOS_SKIP_POINTER_CAPTURE ? {} : { overscrollBehaviorY: "contain" as const }),
                       } satisfies CSSProperties)
                     : {}),
                   ...cardMotionStyle,
